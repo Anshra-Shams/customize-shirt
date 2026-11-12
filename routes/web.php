@@ -7,6 +7,7 @@ use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerOrderController;
 use App\Http\Controllers\DiscountController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\SyncController;
@@ -368,6 +369,18 @@ Route::middleware('auth')->group(function () {
     Route::get('booking/receipt/{id}', [ProductBookingController::class, 'receipt'])->middleware('permission:bookings.view')->name('booking.receipt');
     Route::get('/sales/from-booking/{id}', [SaleController::class, 'convertFromBooking'])->name('sales.from.booking');
     Route::post('/sales/{id}/confirm', [SaleController::class, 'confirmBooking'])->middleware('permission:sales.create')->name('sales.confirm');
+
+    // Customer Orders (Isolated order taking module - does not alter stock or ledger)
+    Route::get('/customer-orders', [CustomerOrderController::class, 'index'])->name('customer_orders.index');
+    Route::get('/customer-orders/create', [CustomerOrderController::class, 'create'])->name('customer_orders.create');
+    Route::post('/customer-orders', [CustomerOrderController::class, 'store'])->name('customer_orders.store');
+    Route::get('/customer-orders/{id}', [CustomerOrderController::class, 'show'])->name('customer_orders.show');
+    Route::get('/customer-orders/{id}/edit', [CustomerOrderController::class, 'edit'])->name('customer_orders.edit');
+    Route::get('/customer-orders/{id}/prepare', [CustomerOrderController::class, 'prepare'])->name('customer_orders.prepare');
+    Route::put('/customer-orders/{id}', [CustomerOrderController::class, 'update'])->name('customer_orders.update');
+    Route::post('/customer-orders/{id}/status', [CustomerOrderController::class, 'updateStatus'])->name('customer_orders.status');
+    Route::get('/customer-orders/{id}/print', [CustomerOrderController::class, 'print'])->name('customer_orders.print');
+    Route::delete('/customer-orders/{id}', [CustomerOrderController::class, 'destroy'])->name('customer_orders.destroy');
 
     // web.php
     Route::get('/warehouse-stock-quantity', [StockTransferController::class, 'getStockQuantity'])->middleware('permission:stock.transfer.view')->name('warehouse.stock.quantity');

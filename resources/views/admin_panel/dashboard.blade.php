@@ -485,6 +485,8 @@
          2. QUICK REPORT NAVIGATION PILLS
     ============================================= --}}
     <div class="db-nav-pills">
+        <a href="{{ route('customer_orders.create') }}" class="db-pill" style="border-color: var(--indigo); color: var(--indigo) !important;"><i class="fa-solid fa-plus-circle" style="color: var(--indigo);"></i> Take Customer Order</a>
+        <a href="{{ route('customer_orders.index') }}"  class="db-pill"><i class="fa-solid fa-clipboard-check"       style="color: var(--blue);"></i>   Customer Orders</a>
         <a href="{{ route('report.sale') }}"           class="db-pill"><i class="fa-solid fa-receipt"              style="color: var(--green);"></i>  Sales Report</a>
         <a href="{{ route('report.purchase') }}"       class="db-pill"><i class="fa-solid fa-cart-shopping"        style="color: var(--blue);"></i>   Purchase Report</a>
         <a href="{{ route('report.profit_loss') }}"    class="db-pill"><i class="fa-solid fa-chart-line"           style="color: var(--cyan);"></i>   Profit & Loss</a>

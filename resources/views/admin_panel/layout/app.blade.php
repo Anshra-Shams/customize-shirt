@@ -779,6 +779,19 @@
 
                         </li>
                         @endcanany
+                        <li class="nav-item">
+                            <a href="#" class="nav-link">
+                                <i class="menu_icon fas fa-clipboard-check"></i>
+                                <span class="menu-title">Customer Orders</span>
+                                <i class="menu-arrow"></i>
+                            </a>
+                            <div class="submenu">
+                                <ul class="submenu-item">
+                                    <li><a href="{{ route('customer_orders.create') }}"><i class="fas fa-plus-circle"></i> Take New Order</a></li>
+                                    <li><a href="{{ route('customer_orders.index') }}"><i class="fas fa-list-alt"></i> All Customer Orders</a></li>
+                                </ul>
+                            </div>
+                        </li>
                         <!--=========================*
                               UI Features
                     *===========================-->
@@ -898,6 +911,8 @@
                                                         <li><a href="{{ url('customers') }}"><i class="fas fa-user"></i>
                                                                 Customer</a></li>
                                                     @endcan
+                                                    <li><a href="{{ route('customer_orders.index') }}"><i class="fas fa-clipboard-check"></i>
+                                                            Customer Orders</a></li>
                                                     @can('zones.view')
                                                         <li><a href="{{ url('zone') }}"><i class="fas fa-map-marker-alt"></i>
                                                                 Zone</a></li>

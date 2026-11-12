@@ -749,7 +749,46 @@ class ProductController extends Controller
         ]);
     }
 
-    // ===== Store product =====
+    /**
+     * Parse and sanitize per-variant materials/services JSON and calculate cost & profit metrics.
+     */
+    private function parseVariantMaterials($rawJson, $salePrice): array
+    {
+        $decoded = is_string($rawJson) ? json_decode($rawJson, true) : (is_array($rawJson) ? $rawJson : []);
+        $clean = [];
+        $totalCost = 0.0;
+
+        if (is_array($decoded)) {
+            foreach ($decoded as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $mName = trim((string) ($item['name'] ?? ''));
+                $mAmt = is_numeric($item['amount'] ?? null) ? round((float) $item['amount'], 2) : 0.0;
+                if ($mName === '' && $mAmt == 0.0) {
+                    continue;
+                }
+                $clean[] = [
+                    'name' => $mName,
+                    'amount' => $mAmt,
+                ];
+                $totalCost += $mAmt;
+            }
+        }
+
+        $sale = is_numeric($salePrice) ? (float) $salePrice : 0.0;
+        $totalCost = round($totalCost, 2);
+        $profit = round($sale - $totalCost, 2);
+        $profitPct = $sale > 0 ? (int) round(($profit / $sale) * 100) : 0;
+
+        return [
+            'materials' => $clean,
+            'material_cost' => $totalCost,
+            'material_profit' => $profit,
+            'material_profit_pct' => $profitPct,
+        ];
+    }
+
     // ===== Store product =====
     public function store_product(Request $request)
     {
@@ -901,6 +940,7 @@ class ProductController extends Controller
                 $conv_factors = $request->variant_conv_factor;
                 $is_bases = $request->variant_is_base;
                 $units = $request->variant_unit;
+                $materials_raw = $request->input('variant_materials', []);
 
                 // Validate Conv Factors if Weight Unit is selected
                 if (in_array($mode, ['by_kg', 'by_gm', 'by_ton'])) {
@@ -963,6 +1003,8 @@ class ProductController extends Controller
                             $variantStockSum += $vStock;
                         }
 
+                        $matMeta = $this->parseVariantMaterials($materials_raw[$i] ?? null, $sale_prices[$i] ?? 0);
+
                         $variants[] = [
                             'name' => $names[$i],
                             'size' => $sizes[$i] ?? '-',
@@ -977,6 +1019,10 @@ class ProductController extends Controller
                             'conv_factor' => $vConvFactor,
                             'is_base_variant' => $is_bases[$i] ?? 0,
                             'unit' => $units[$i] ?? 'Pcs',
+                            'materials' => $matMeta['materials'],
+                            'material_cost' => $matMeta['material_cost'],
+                            'material_profit' => $matMeta['material_profit'],
+                            'material_profit_pct' => $matMeta['material_profit_pct'],
                         ];
                     }
                 }
@@ -1245,6 +1291,7 @@ class ProductController extends Controller
                 $conv_factors = $request->variant_conv_factor;
                 $is_bases = $request->variant_is_base;
                 $units = $request->variant_unit;
+                $materials_raw = $request->input('variant_materials', []);
 
                 // Validate Conv Factors if Weight Unit is selected
                 if (in_array($mode, ['by_kg', 'by_gm', 'by_ton'])) {
@@ -1375,6 +1422,8 @@ class ProductController extends Controller
                             $savedInitial = $stocks[$i] ?? 0;
                         }
 
+                        $matMeta = $this->parseVariantMaterials($materials_raw[$i] ?? null, $sale_prices[$i] ?? 0);
+
                         $variants[] = [
                             'name' => $vName,
                             'size' => $vSize,
@@ -1390,6 +1439,10 @@ class ProductController extends Controller
                             'conv_factor' => $vConvFactor,
                             'is_base_variant' => $is_bases[$i] ?? 0,
                             'unit' => $vUnit,
+                            'materials' => $matMeta['materials'],
+                            'material_cost' => $matMeta['material_cost'],
+                            'material_profit' => $matMeta['material_profit'],
+                            'material_profit_pct' => $matMeta['material_profit_pct'],
                         ];
                     }
                 }

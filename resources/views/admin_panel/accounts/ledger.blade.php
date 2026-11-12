@@ -116,6 +116,8 @@
                                                 $voucherNo = $entry->source->voucher_no;
                                             } elseif ($entry->source && $entry->source->invoice_no) {
                                                 $voucherNo = $entry->source->invoice_no;
+                                            } elseif ($entry->source && $entry->source->order_no) {
+                                                $voucherNo = $entry->source->order_no;
                                             }
 
                                             // Resolve party name and type
