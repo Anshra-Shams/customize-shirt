@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Account;
 use App\Models\Customer;
 use App\Models\CustomerLedger;
+use App\Models\CustomerOrder;
 use App\Models\Product;
 use App\Models\ProductBooking;
 use App\Models\Sale;
@@ -412,6 +413,35 @@ class SaleController extends Controller
             'booking' => $booking,
             'bookingItems' => $items,
         ]);
+    }
+
+    /**
+     * Convert and deliver a Customer Order through the Sale creation interface.
+     */
+    public function convertFromOrder($id)
+    {
+        $order = CustomerOrder::with(['customer', 'items.product.unit', 'items.product.brand', 'creator'])->findOrFail($id);
+
+        $customer = Customer::all();
+        $warehouse = Warehouse::all();
+        
+        $allSeries = \App\Models\InvoiceSeries::orderBy('prefix', 'asc')->get();
+        $defaultSeries = $allSeries->where('is_default', 1)->first() ?: $allSeries->first();
+        $activePrefix = $defaultSeries ? $defaultSeries->prefix : 'INV';
+        $nextInvoiceNumber = \App\Models\InvoiceSeries::generateNextNo($activePrefix);
+
+        $recentProducts = Product::latest()->take(12)->get();
+
+        $accounts = \App\Models\Account::whereHas('head', function($q) {
+            $q->whereIn('name', ['Cash', 'Bank']);
+        })->where('status', 1)
+            ->orderBy('title')
+            ->get();
+
+        return view('admin_panel.sale.add_sale222', compact(
+            'warehouse', 'customer', 'nextInvoiceNumber', 'accounts',
+            'recentProducts', 'allSeries', 'activePrefix'
+        ))->with('fromOrder', $order);
     }
 
     public function saleretun($id)
@@ -1946,6 +1976,36 @@ class SaleController extends Controller
                 }
             }
 
+            // If delivering a Customer Order, update the order status & link to this sale
+            if ($request->filled('customer_order_id')) {
+                $cOrder = CustomerOrder::find($request->customer_order_id);
+                if ($cOrder) {
+                    $cOrder->status = 'delivered';
+                    $cOrder->delivered_at = now();
+                    $cOrder->delivered_by = auth()->id();
+                    $cOrder->received_by = $sale->walkin_name ?: ($sale->customer_relation->customer_name ?? 'Customer');
+                    $cOrder->sale_id = $sale->id;
+
+                    $deliveryMethods = [];
+                    $accIds = $request->input('receipt_account_id', []);
+                    $accAmts = $request->input('receipt_amount', []);
+                    $delTotal = 0;
+                    foreach ($accAmts as $aIdx => $aAmt) {
+                        $amtFloat = (float) $aAmt;
+                        if ($amtFloat > 0) {
+                            $delTotal += $amtFloat;
+                            $deliveryMethods[] = [
+                                'account_id' => $accIds[$aIdx] ?? null,
+                                'amount' => $amtFloat,
+                            ];
+                        }
+                    }
+                    $cOrder->delivery_payment_amount = $delTotal;
+                    $cOrder->delivery_payment_methods = $deliveryMethods;
+                    $cOrder->save();
+                }
+            }
+
             // If AJAX/JSON response needed
             if ($request->ajax() || $request->wantsJson()) {
                 $receiptUrl = route('sales.receipt', $sale->id) . '?from=pos';
@@ -1986,6 +2046,10 @@ class SaleController extends Controller
         if (! $sale->relationLoaded('items')) {
             $sale->load('items.product');
         }
+
+        $isCustomerOrderDelivery = request()->filled('customer_order_id')
+            || (!empty($sale->reference) && str_contains($sale->reference, 'Customer Order'))
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists();
 
         foreach ($sale->items as $item) {
             // Outsourced / Manual products do not affect warehouse stock
@@ -2067,12 +2131,41 @@ class SaleController extends Controller
             }
 
             if (! $stock) {
-                throw new \Exception('Stock record not found in warehouse for product: '.$item->product_name);
+                if ($isCustomerOrderDelivery) {
+                    $stock = WarehouseStock::create([
+                        'product_id' => $item->product_id,
+                        'warehouse_id' => $targetWhId,
+                        'quantity' => 0,
+                        'total_pieces' => 0,
+                    ]);
+                } else {
+                    throw new \Exception('Stock record not found in warehouse for product: '.$item->product_name);
+                }
             }
 
             if ($type === 'out') {
                 // Deduct with float tolerance
                 if ((float)$stock->total_pieces < ((float)$qtyPieces - 0.0001)) {
+                    if ($isCustomerOrderDelivery) {
+                        // Customer Orders are custom made-to-order / prepared; do not block delivery if warehouse stock is 0
+                        $stock->total_pieces -= $qtyPieces;
+                        $ppb = $item->product->pieces_per_box ?? 1;
+                        $stock->quantity = round($stock->total_pieces / ($ppb > 0 ? $ppb : 1), 2);
+                        $stock->save();
+
+                        DB::table('stock_movements')->insert([
+                            'product_id' => $item->product_id,
+                            'type' => 'out',
+                            'qty' => -$qtyPieces, // Negative for OUT
+                            'ref_type' => 'sale',
+                            'ref_id' => $sale->id,
+                            'note' => 'Customer Order Delivery #'.$sale->invoice_no,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                        continue;
+                    }
+
                     $availFormatted = number_format($stock->total_pieces, 3);
                     $unitLabel = ($productMode === 'by_kg' || $productMode === 'by_gm') ? 'Kg' : 'Pcs';
                     $whObj = \App\Models\Warehouse::find($stock->warehouse_id);

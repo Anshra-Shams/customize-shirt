@@ -25,18 +25,28 @@ class CustomerOrder extends Model
         'total_amount',
         'advance_amount',
         'payment_methods',
+        'delivered_at',
+        'delivered_by',
+        'received_by',
+        'delivery_notes',
+        'delivery_payment_amount',
+        'delivery_payment_methods',
+        'sale_id',
         'created_by',
     ];
 
     protected $casts = [
         'order_date' => 'date',
         'delivery_date' => 'date',
+        'delivered_at' => 'datetime',
         'total_qty' => 'decimal:2',
         'subtotal' => 'decimal:2',
         'discount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'advance_amount' => 'decimal:2',
+        'delivery_payment_amount' => 'decimal:2',
         'payment_methods' => 'array',
+        'delivery_payment_methods' => 'array',
     ];
 
     public const STATUSES = [
@@ -60,6 +70,31 @@ class CustomerOrder extends Model
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function deliverer()
+    {
+        return $this->belongsTo(User::class, 'delivered_by');
+    }
+
+    public function sale()
+    {
+        return $this->belongsTo(Sale::class, 'sale_id');
+    }
+
+    public function getTotalPaidAmountAttribute(): float
+    {
+        return round((float) ($this->advance_amount ?? 0) + (float) ($this->delivery_payment_amount ?? 0), 2);
+    }
+
+    public function getRemainingBalanceAttribute(): float
+    {
+        return round(max(0, (float) ($this->total_amount ?? 0) - $this->total_paid_amount), 2);
+    }
+
+    public function getIsDeliveredAttribute(): bool
+    {
+        return $this->status === 'delivered';
     }
 
     public function getCustomerDisplayNameAttribute(): string

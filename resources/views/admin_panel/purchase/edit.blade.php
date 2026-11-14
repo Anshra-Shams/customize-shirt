@@ -938,7 +938,9 @@
                         delay: 250,
                         data: function(params) {
                             return {
-                                q: params.term
+                                term: params.term,
+                                q: params.term,
+                                raw_materials_only: 1
                             };
                         },
                         processResults: function(data) {

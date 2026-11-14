@@ -189,6 +189,15 @@
                     </span>
                 </div>
                 <div class="d-flex align-items-center flex-wrap gap-2">
+                    @if ($order->status !== 'delivered' && $order->status !== 'cancelled')
+                        <a href="{{ route('sales.from.order', $order->id) }}" class="btn btn-sm btn-success fw-bold text-white shadow-sm">
+                            <i class="bi bi-truck me-1"></i> Deliver Order
+                        </a>
+                    @elseif ($order->sale_id)
+                        <a href="{{ route('sales.invoice', $order->sale_id) }}" target="_blank" class="btn btn-sm btn-outline-success fw-bold">
+                            <i class="bi bi-file-earmark-text me-1"></i> View Sale Invoice
+                        </a>
+                    @endif
                     <a href="{{ route('customer_orders.print', $order->id) }}" target="_blank" class="btn btn-sm co-btn-secondary">
                         <i class="bi bi-printer me-1"></i> Print Slip
                     </a>
@@ -239,9 +248,12 @@
 
                 <div class="col-md-3">
                     <label class="form-label fw-bold mb-1 text-muted small">Quick Status Update</label>
-                    <form action="{{ route('customer_orders.status', $order->id) }}" method="POST" class="d-flex gap-1 co-status-form">
+                    <form action="{{ route('customer_orders.status', $order->id) }}" method="POST" class="d-flex gap-1 co-status-form" id="coShowStatusForm">
                         @csrf
-                        <select name="status" class="form-select">
+                        <select name="status" class="form-select" id="coShowStatusSelect"
+                            data-prev-status="{{ $order->status }}"
+                            data-prepare-url="{{ route('customer_orders.prepare', $order->id) }}"
+                            data-deliver-url="{{ route('sales.from.order', $order->id) }}">
                             @foreach ($statuses as $key => $label)
                                 <option value="{{ $key }}" {{ $order->status === $key ? 'selected' : '' }}>
                                     {{ $label }}
@@ -380,18 +392,42 @@
                             <div class="col-6 fw-bold fs-5 text-primary">Estimated Total</div>
                             <div class="col-6 text-end fw-bold fs-5 text-primary">Rs {{ number_format($order->total_amount, 2) }}</div>
                         </div>
+                        @php
+                            $orderMatCost = 0;
+                            foreach ($order->items as $oItem) {
+                                $mats = is_array($oItem->materials) ? $oItem->materials : [];
+                                $itemMatCost = collect($mats)->sum(fn($m) => (float)($m['amount'] ?? 0));
+                                $orderMatCost += ($itemMatCost * (float)$oItem->qty);
+                            }
+                            $orderProfit = $order->total_amount - $orderMatCost;
+                            $orderProfitPct = $order->total_amount > 0 ? round(($orderProfit / $order->total_amount) * 100) : 0;
+                        @endphp
+                        @if ($orderMatCost > 0)
+                            <div class="row py-1 align-items-center text-muted small">
+                                <div class="col-6">Est. Profit</div>
+                                <div class="col-6 text-end fw-bold {{ $orderProfit >= 0 ? 'text-success' : 'text-danger' }}">
+                                    Rs {{ number_format($orderProfit, 2) }} ({{ $orderProfitPct }}%)
+                                </div>
+                            </div>
+                        @endif
                         <div class="row py-1 mt-1 align-items-center">
                             <div class="col-7 text-success fw-semibold small">Advance Paid</div>
                             <div class="col-5 text-end text-success fw-bold small">Rs {{ number_format($order->advance_amount, 2) }}</div>
                         </div>
-                        <div class="row py-1 align-items-center bg-warning-subtle rounded-2 mt-1">
-                            <div class="col-7 text-dark fw-bold">Remaining Balance</div>
-                            <div class="col-5 text-end text-danger fw-bold">Rs {{ number_format(max(0, $order->total_amount - $order->advance_amount), 2) }}</div>
+                        @if ((float)($order->delivery_payment_amount ?? 0) > 0)
+                            <div class="row py-1 align-items-center">
+                                <div class="col-7 text-success fw-semibold small">Delivery Payment</div>
+                                <div class="col-5 text-end text-success fw-bold small">Rs {{ number_format($order->delivery_payment_amount, 2) }}</div>
+                            </div>
+                        @endif
+                        <div class="row py-1 align-items-center {{ $order->remaining_balance > 0 ? 'bg-warning-subtle' : 'bg-success-subtle' }} rounded-2 mt-1">
+                            <div class="col-7 text-dark fw-bold">{{ $order->remaining_balance > 0 ? 'Remaining Balance' : 'Balance Settled' }}</div>
+                            <div class="col-5 text-end {{ $order->remaining_balance > 0 ? 'text-danger' : 'text-success' }} fw-bold">Rs {{ number_format($order->remaining_balance, 2) }}</div>
                         </div>
                         @if (is_array($order->payment_methods) && count($order->payment_methods) > 0)
                             <div class="mt-2 pt-2 border-top">
                                 <div class="small fw-bold text-muted mb-1">
-                                    <i class="bi bi-wallet2 text-success me-1"></i> Payment Methods
+                                    <i class="bi bi-wallet2 text-success me-1"></i> Advance Payment Methods
                                 </div>
                                 @foreach ($order->payment_methods as $pm)
                                     <div class="d-flex justify-content-between small text-dark py-0">
@@ -401,10 +437,73 @@
                                 @endforeach
                             </div>
                         @endif
+                        @if (is_array($order->delivery_payment_methods) && count($order->delivery_payment_methods) > 0)
+                            <div class="mt-2 pt-2 border-top">
+                                <div class="small fw-bold text-muted mb-1">
+                                    <i class="bi bi-truck text-success me-1"></i> Delivery Payment Methods
+                                </div>
+                                @foreach ($order->delivery_payment_methods as $dpm)
+                                    <div class="d-flex justify-content-between small text-dark py-0">
+                                        <span>{{ $dpm['account_title'] ?? 'Account' }}</span>
+                                        <span class="fw-semibold">Rs {{ number_format((float) ($dpm['amount'] ?? 0), 2) }}</span>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
         </div>
+
+        @if ($order->status === 'delivered')
+            <div class="co-card-panel mt-3 border-success-subtle bg-light">
+                <div class="co-section-title text-success" style="border-left-color: #10b981 !important;">
+                    <i class="bi bi-check-circle-fill me-1"></i> Delivery &amp; Handover Information
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label text-muted small fw-bold mb-1">Delivered On</label>
+                        <div class="co-readonly-box text-success fw-bold">
+                            {{ $order->delivered_at ? $order->delivered_at->format('d/m/Y h:i A') : ($order->delivery_date ? $order->delivery_date->format('d/m/Y') : 'Delivered') }}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label text-muted small fw-bold mb-1">Delivered By</label>
+                        <div class="co-readonly-box">
+                            {{ $order->deliverer->name ?? 'Staff' }}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label text-muted small fw-bold mb-1">Received By</label>
+                        <div class="co-readonly-box text-dark fw-bold">
+                            {{ $order->received_by ?: $order->customer_display_name }}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label text-muted small fw-bold mb-1">Delivery Payment</label>
+                        <div class="co-readonly-box text-success fw-bold">
+                            Rs {{ number_format((float)($order->delivery_payment_amount ?? 0), 2) }}
+                        </div>
+                    </div>
+                    @if ($order->sale_id)
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small fw-bold mb-1">Sale Invoice</label>
+                            <div class="co-readonly-box">
+                                <a href="{{ route('sales.invoice', $order->sale_id) }}" target="_blank" class="fw-bold text-primary text-decoration-none">
+                                    <i class="bi bi-receipt me-1"></i> Invoice #{{ $order->sale_id }}
+                                </a>
+                            </div>
+                        </div>
+                    @endif
+                    @if ($order->delivery_notes)
+                        <div class="col-12 mt-2">
+                            <label class="form-label text-muted small fw-bold mb-1">Handover Notes</label>
+                            <div class="p-2 border rounded-3 bg-white text-dark small">{{ $order->delivery_notes }}</div>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        @endif
 
         {{-- BOTTOM ACTION BAR --}}
         <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center p-3 mt-3 border-top bg-light rounded-3">
@@ -417,6 +516,15 @@
             </form>
 
             <div class="d-flex flex-wrap gap-2">
+                @if ($order->status !== 'delivered' && $order->status !== 'cancelled')
+                    <a href="{{ route('sales.from.order', $order->id) }}" class="btn btn-success fw-bold text-white shadow-sm">
+                        <i class="bi bi-truck me-1"></i> Deliver Order
+                    </a>
+                @elseif ($order->sale_id)
+                    <a href="{{ route('sales.invoice', $order->sale_id) }}" target="_blank" class="btn btn-outline-success fw-bold">
+                        <i class="bi bi-file-earmark-text me-1"></i> View Sale Invoice
+                    </a>
+                @endif
                 <a href="{{ route('customer_orders.index') }}" class="btn co-btn-secondary">
                     <i class="bi bi-list-ul me-1"></i> All Orders
                 </a>
@@ -436,6 +544,25 @@
 @section('js')
 <script>
     $(document).ready(function() {
+        $('#coShowStatusSelect').on('change', function() {
+            var selected = $(this).val();
+            var prev = $(this).data('prev-status');
+            var prepareUrl = $(this).data('prepare-url');
+            var deliverUrl = $(this).data('deliver-url');
+
+            if (selected === 'in_progress' && prepareUrl) {
+                $(this).val(prev);
+                window.location.href = prepareUrl;
+                return;
+            }
+
+            if (selected === 'delivered' && deliverUrl) {
+                $(this).val(prev);
+                window.location.href = deliverUrl;
+                return;
+            }
+        });
+
         $('#btnDeleteSingleOrder').on('click', function() {
             Swal.fire({
                 title: 'Delete Order #{{ $order->order_no }}?',

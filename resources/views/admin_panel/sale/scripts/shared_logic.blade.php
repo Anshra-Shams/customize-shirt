@@ -476,8 +476,18 @@
 
         const prev = toNum($('#previousBalance').val());
         const receipts = toNum($('#receiptsTotal').text());
-        const payable = Math.max(0, tNet - orderDisc + prev - receipts);
+        const orderAdvance = toNum($('#orderAdvanceAmountHidden').val());
+        const isFromOrder = $('#customer_order_id').length > 0 && $('#customer_order_id').val() !== '';
+
         const currentInvoiceTotal = Math.max(0, tNet - orderDisc);
+        const balanceDue = Math.max(0, currentInvoiceTotal - orderAdvance);
+        const payable = Math.max(0, tNet - orderDisc + prev - receipts - (isFromOrder ? orderAdvance : 0));
+
+        if (isFromOrder) {
+            $('#summaryOrderAdvance').text('Rs ' + orderAdvance.toFixed(2));
+            $('#summaryBalanceDue').text('Rs ' + balanceDue.toFixed(2));
+            $('#bottomAdvanceVal').text('Rs ' + orderAdvance.toFixed(2));
+        }
 
         $('#tQty').text(tQty.toFixed(0));
         $('#tGross').text(tGross.toFixed(2));
@@ -496,15 +506,17 @@
         $('#tCurrentBill').text(currentInvoiceTotal.toFixed(2));
 
         const walkinPaid = receipts;
-        const change = walkinPaid - currentInvoiceTotal;
+        const change = isFromOrder ? (receipts - balanceDue) : (walkinPaid - currentInvoiceTotal);
         const changeStr = change.toFixed(2);
         $('#walkinChange').text(changeStr);
         $('#bottomChangeVal').text(changeStr);
         $('#backendChange').val(change > 0 ? change.toFixed(2) : 0);
-        if (change >= 0) {
+        if (change >= -0.01) {
             $('#walkinChange, #bottomChangeVal').removeClass('text-warning text-danger').addClass('text-success');
+            $('#summaryChangeLabel').text('Change');
         } else {
             $('#walkinChange, #bottomChangeVal').removeClass('text-success text-warning').addClass('text-danger');
+            $('#summaryChangeLabel').text('Remaining Due');
         }
 
         $('#subTotal1').val(tGross.toFixed(2));
@@ -1274,10 +1286,12 @@
             const isWalkin = $('#walkinToggle').is(':checked');
             const invoiceNet = toNum($('#totalBalance').val());
             const paidNow = toNum($('#receiptsTotal').text());
+            const orderAdvance = toNum($('#orderAdvanceAmountHidden').val());
 
             if (isWalkin) {
                 // For walk-in, they must pay 100% upfront (with a small floating point tolerance)
-                if (paidNow < (invoiceNet - 0.05)) {
+                // If converted from an order, orderAdvance was already collected at order time
+                if ((paidNow + orderAdvance) < (invoiceNet - 0.05)) {
                     Swal.fire({
                         icon: 'error',
                         title: '100% Payment Required',
@@ -1372,6 +1386,8 @@
                 sum += toNum($(this).val());
             });
             $('#receiptsTotal').text(sum.toFixed(2));
+            $('#receiptsTotalBadge').text(sum.toFixed(2));
+            $('#bottomPaymentsTotal').text(sum.toFixed(2));
             updateGrandTotals();
         }
 

@@ -74,8 +74,8 @@
     {{-- Page Header & Mode Switcher --}}
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
         <div>
-            <h4 class="fw-bold text-dark mb-0"><i class="fas fa-boxes-stacked text-primary me-2"></i>Item Stock &amp; Ledger Report</h4>
-            <small class="text-muted">Detailed inventory movements, explicit Stock Adjustments (+/-), and Valuation Summary</small>
+            <h4 class="fw-bold text-dark mb-0"><i class="fas fa-boxes-stacked text-primary me-2"></i>Raw Material Stock &amp; Ledger Report</h4>
+            <small class="text-muted">Detailed inventory movements, explicit Stock Adjustments (+/-), and Valuation Summary for Raw Materials</small>
         </div>
 
         {{-- Mode Pills --}}
@@ -166,11 +166,11 @@
                 </select>
             </div>
 
-            {{-- Product --}}
+            {{-- Raw Material --}}
             <div class="col-md-3">
-                <label class="rpt-flabel">Search Product</label>
+                <label class="rpt-flabel">Search Raw Material</label>
                 <select name="product_id" id="product_id" class="form-control select2">
-                    <option value="all">-- All Products --</option>
+                    <option value="all">-- All Raw Materials --</option>
                 </select>
             </div>
 
@@ -270,9 +270,9 @@ $(document).ready(function() {
 
     let currentReportData = [];
 
-    // Select2 Product Search
+    // Select2 Raw Material Search
     $('#product_id').select2({
-        placeholder: "-- All Products --",
+        placeholder: "-- All Raw Materials --",
         allowClear: true,
         width: '100%',
         ajax: {
@@ -280,7 +280,11 @@ $(document).ready(function() {
             dataType: 'json',
             delay: 250,
             data: function (params) {
-                return { q: params.term };
+                return { 
+                    q: params.term,
+                    raw_materials_only: 1,
+                    category_id: $('#category_id').val() !== 'all' ? $('#category_id').val() : ''
+                };
             },
             processResults: function (data) {
                 return {
@@ -298,6 +302,10 @@ $(document).ready(function() {
 
     $('#product_id').on('select2:unselect', function () {
         $(this).val('all').trigger('change');
+    });
+
+    $('#category_id').on('change', function () {
+        $('#product_id').val('all').trigger('change');
     });
 
     // Report Mode Pill Toggle

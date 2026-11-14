@@ -33,7 +33,7 @@ class ReportingController extends Controller
     public function item_stock_report()
     {
         $user = auth()->user();
-        $categories = Category::orderBy('name')->get();
+        $categories = Category::rawMaterials()->orderBy('name')->get();
         $units      = Unit::orderBy('name')->get();
 
         // Warehouse Permission Filter: Show warehouses only if user has warehouse permission
@@ -57,7 +57,10 @@ class ReportingController extends Controller
         $dateFrom    = $request->date_from;
         $dateTo      = $request->date_to;
 
-        $productsQuery = Product::with(['warehouseStocks', 'unit', 'category_relation']);
+        $productsQuery = Product::with(['warehouseStocks', 'unit', 'category_relation'])
+            ->where(function ($q) {
+                $q->where('is_raw_material', 1)->orWhere('is_part', 1);
+            });
 
         if ($productId && $productId !== 'all') {
             $productsQuery->where('id', $productId);
@@ -429,7 +432,8 @@ class ReportingController extends Controller
                 } else {
                     $cartons = '-';
                     $loose   = $balance;
-                    $formattedStock = number_format($balance, (in_array($product->size_mode, ['by_kg','by_meter','by_feet']) ? 2 : 0)) . " {$unitName}";
+                    $dispBal = fmod($balance, 1) == 0 ? number_format($balance, 0) : number_format($balance, 2);
+                    $formattedStock = "{$dispBal} {$unitName}";
                     $cartonDisplay = '—';
                 }
 
@@ -1083,7 +1087,9 @@ class ReportingController extends Controller
 
     public function purchase_report()
     {
-        $products = \App\Models\Product::orderBy('item_name')->get();
+        $products = \App\Models\Product::where(function($q) {
+            $q->where('is_raw_material', 1)->orWhere('is_part', 1);
+        })->orderBy('item_name')->get();
         $vendors = \App\Models\Vendor::orderBy('name')->get();
         return view('admin_panel.reporting.purchase_report', compact('products', 'vendors'));
     }
@@ -1501,6 +1507,8 @@ class ReportingController extends Controller
                         $ref = $matches[1];
                     } elseif (preg_match('/Receipt #(\S+)/', $desc, $matches)) {
                         $ref = $matches[1];
+                    } elseif (preg_match('/Order #(\S+)/', $desc, $matches)) {
+                        $ref = $matches[1];
                     }
 
                     $entryDate = $row['date'];
@@ -1573,6 +1581,8 @@ class ReportingController extends Controller
                 $ref = $matches[1];
             } elseif (preg_match('/Receipt #(\S+)/', $desc, $matches)) {
                 $ref = $matches[1];
+            } elseif (preg_match('/Order #(\S+)/', $desc, $matches)) {
+                $ref = $matches[1];
             }
 
             $entryDate = $row['date'];
@@ -1621,6 +1631,12 @@ class ReportingController extends Controller
                 if ($pv && $pv->row_account_id) {
                     $account = \App\Models\Account::find($pv->row_account_id);
                     return $account ? $account->title : '';
+                }
+            } elseif ($sourceType === \App\Models\CustomerOrder::class && $sourceId) {
+                $order = \App\Models\CustomerOrder::find($sourceId);
+                if ($order && is_array($order->payment_methods) && count($order->payment_methods) > 0) {
+                    $titles = array_filter(array_column($order->payment_methods, 'account_title'));
+                    return implode(', ', $titles);
                 }
             }
         } catch (\Exception $e) {

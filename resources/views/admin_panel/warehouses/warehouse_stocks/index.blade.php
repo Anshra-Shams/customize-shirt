@@ -140,17 +140,30 @@
                                                     style="width: 30px; height: 30px; font-size: 10px;">IMG</div>
                                             @endif
                                             <div>
-                                                <div class="fw-bold text-dark">{{ $stock->product->item_name ?? 'N/A' }}
+                                                <div class="fw-bold text-dark d-flex align-items-center gap-1">
+                                                    {{ $stock->product->item_name ?? 'N/A' }}
+                                                    @if(!empty($stock->product->is_raw_material) || !empty($stock->product->is_part))
+                                                        <span class="badge bg-primary-subtle text-primary border" style="font-size: 0.68rem;">Raw Material</span>
+                                                    @endif
                                                 </div>
                                                 <div class="small text-muted">{{ $stock->product->item_code ?? '' }}</div>
                                             </div>
                                         </div>
                                     </td>
                                     <td class="text-center text-nowrap">
-                                        <span class="badge bg-info text-dark">{{ $stock->quantity }} Boxes</span>
+                                        @if(!empty($stock->product->is_raw_material) || ($stock->product->pieces_per_box ?? 1) <= 1)
+                                            <span class="text-muted">—</span>
+                                        @else
+                                            <span class="badge bg-info text-dark">{{ $stock->quantity }} Boxes</span>
+                                        @endif
                                     </td>
                                     <td class="text-center fw-bold text-primary">
-                                        {{ number_format($stock->total_pieces) }}</td>
+                                        @php
+                                            $uName = optional($stock->product->unit)->name ?: 'Pcs';
+                                            $formattedQty = fmod($stock->total_pieces, 1) == 0 ? number_format($stock->total_pieces, 0) : number_format($stock->total_pieces, 2);
+                                        @endphp
+                                        {{ $formattedQty }} <span class="small fw-normal text-muted">{{ $uName }}</span>
+                                    </td>
                                     <td class="text-end">
                                         @can('warehouse.stock.edit')
                                             <button onclick="editStock({{ $stock->id }})"

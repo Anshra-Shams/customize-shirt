@@ -162,24 +162,26 @@
                 @php
                     // Size mode logic for display
                     $sizeMode = $item->size_mode ?? 'by_pieces';
-                    $totalPieces = (int) $item->qty;
+                    $rawQty = (float) $item->qty;
+                    $totalPieces = fmod($rawQty, 1) == 0 ? (int)$rawQty : number_format($rawQty, 2);
+                    $rawUnit = !empty($item->unit) ? $item->unit : (optional($item->product->unit)->name ?: 'Pcs');
+                    $uomName = ucfirst(trim($rawUnit));
 
                     // Display quantity string
-                    $qtyDisplay = $totalPieces;
-                    if ($sizeMode == 'by_cartons' || $sizeMode == 'by_size') {
+                    $qtyDisplay = $totalPieces . ' ' . $uomName;
+                    if ($sizeMode == 'by_cartons') {
                         $piecesPerBox = (int) ($item->pieces_per_box ?? 1);
-                        // Prevent div by zero
                         $piecesPerBox = $piecesPerBox > 0 ? $piecesPerBox : 1;
 
-                        $boxes = floor($totalPieces / $piecesPerBox);
-                        $loose = $totalPieces % $piecesPerBox;
+                        $boxes = floor($rawQty / $piecesPerBox);
+                        $loose = fmod($rawQty, $piecesPerBox);
 
                         if ($boxes > 0 && $loose > 0) {
-                            $qtyDisplay = "$boxes.$loose";
+                            $qtyDisplay = "$boxes Box + $loose $uomName";
                         } elseif ($boxes > 0) {
-                            $qtyDisplay = $boxes;
+                            $qtyDisplay = "$boxes Box";
                         } else {
-                            $qtyDisplay = $loose;
+                            $qtyDisplay = "$loose $uomName";
                         }
                     }
                 @endphp

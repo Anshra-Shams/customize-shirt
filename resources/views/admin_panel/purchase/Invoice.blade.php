@@ -362,12 +362,19 @@
                             $m2PerPiece = $item->pieces_per_m2 ?? 0;
                             $m2PerBox = $m2PerPiece * $piecesPerBox;
 
-                            $totalPieces = (int) $item->qty;
-                            $boxes = $piecesPerBox > 0 ? floor($totalPieces / $piecesPerBox) : $totalPieces;
-                            $loosePieces = $piecesPerBox > 0 ? $totalPieces % $piecesPerBox : 0;
+                            $rawQty = (float) $item->qty;
+                            $formattedQty = fmod($rawQty, 1) == 0 ? (int)$rawQty : number_format($rawQty, 2);
+                            $totalPieces = $formattedQty;
+                            $boxes = $piecesPerBox > 0 ? floor($rawQty / $piecesPerBox) : $rawQty;
+                            $loosePieces = $piecesPerBox > 0 ? fmod($rawQty, $piecesPerBox) : 0;
 
-                            $totalM2Line = $m2PerPiece * $totalPieces;
+                            $totalM2Line = $m2PerPiece * $rawQty;
                             $sizeMode = $item->size_mode ?? 'by_pieces';
+
+                            // Determine Unit of Measure (UOM)
+                            $rawUnit = !empty($item->unit) ? $item->unit : (optional($item->product->unit)->name ?: 'Pcs');
+                            $uom = ucfirst(trim($rawUnit));
+                            $isStandardPcs = in_array(strtolower($uom), ['pcs', 'pc', 'piece', 'pieces']);
                         @endphp
                         @php
                             $variantInfo = '';
@@ -416,29 +423,35 @@
                             <td class="text-center" style="vertical-align: middle;">
                                 <div style="font-weight: bold; color: #0f172a;">
                                     @if ($sizeMode == 'by_pieces')
-                                        {{ $totalPieces }} Pcs
-                                    @else
+                                        {{ $totalPieces }} {{ $uom }}
+                                    @elseif ($sizeMode == 'by_cartons')
                                         @if ($boxes > 0 && $loosePieces > 0)
-                                            {{ $boxes }} Box + {{ $loosePieces }} Pc
+                                            {{ $boxes }} Box + {{ $loosePieces }} {{ $uom }}
                                         @elseif ($boxes > 0)
                                             {{ $boxes }} Box
                                         @else
-                                            {{ $loosePieces }} Pcs
+                                            {{ $loosePieces }} {{ $uom }}
                                         @endif
+                                    @elseif ($sizeMode == 'by_size')
+                                        {{ $totalPieces }} {{ $uom }}
+                                    @else
+                                        {{ $totalPieces }} {{ $uom }}
                                     @endif
                                 </div>
-                                <small class="text-muted" style="font-size: 10px;">({{ $totalPieces }} pcs)</small>
+                                @if ($sizeMode == 'by_cartons' && $boxes > 0)
+                                    <small class="text-muted" style="font-size: 10px;">({{ $totalPieces }} {{ strtolower($uom) }})</small>
+                                @endif
                             </td>
 
                             <td class="text-center" style="vertical-align: middle;">
                                 @if ($sizeMode == 'by_pieces')
-                                    <span class="fw-bold">Pcs</span>
+                                    <span class="fw-bold">{{ $uom }}</span>
                                 @elseif ($sizeMode == 'by_cartons')
                                     <span class="fw-bold">Box</span>
                                 @elseif ($sizeMode == 'by_size')
                                     <span class="fw-bold">{{ number_format($totalM2Line, 4) }}</span> m²
                                 @else
-                                    {{ $item->unit }}
+                                    <span class="fw-bold">{{ $uom }}</span>
                                 @endif
                             </td>
 
@@ -473,7 +486,10 @@
             @foreach ($purchase->items as $item)
                 @php
                     $sizeMode = $item->size_mode ?? 'by_pieces';
-                    $totalPieces = (int) $item->qty;
+                    $rawQty = (float) $item->qty;
+                    $totalPieces = fmod($rawQty, 1) == 0 ? (int)$rawQty : number_format($rawQty, 2);
+                    $rawUnit = !empty($item->unit) ? $item->unit : (optional($item->product->unit)->name ?: 'Pcs');
+                    $uom = ucfirst(trim($rawUnit));
                     $variantInfo = '';
                     if (!empty($item->color)) {
                         $decodedColor = base64_decode($item->color, true);
@@ -501,7 +517,7 @@
 
                     <div class="mob-item-details">
                         <div>
-                            <span class="fw-bold text-dark">{{ $totalPieces }} {{ $item->unit ?? 'Pcs' }}</span>
+                            <span class="fw-bold text-dark">{{ $totalPieces }} {{ $uom }}</span>
                             <span class="text-muted ms-1">@ Rs. {{ number_format($item->price, 2) }}</span>
                         </div>
                         <div class="text-end">

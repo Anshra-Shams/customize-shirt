@@ -396,18 +396,18 @@
                     </div>
 
                     <div class="row g-2 align-items-end">
-                        <div class="col-md-2">
+                        <div class="col-xl-2 col-lg-2 col-md-4">
                             <label class="form-label fw-bold mb-1 text-muted small">System No.</label>
                             <input type="text" class="form-control input-readonly" name="invoice_no" value="{{ $nextInvoice ?? 'NEW' }}" readonly>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-xl-2 col-lg-2 col-md-4">
                             <label class="form-label fw-bold mb-1 text-muted small">Vendor Inv#</label>
                             <input type="text" class="form-control" name="purchase_order_no" placeholder="Manual Ref">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-xl-2 col-lg-2 col-md-4">
                             <label class="form-label fw-bold mb-1 text-muted small">Select Vendor</label>
                             <div class="d-flex align-items-center gap-1">
-                                <div class="flex-grow-1">
+                                <div class="flex-grow-1" style="min-width: 0;">
                                     <select class="form-select select2" id="vendorSelect" name="vendor_id">
                                         <option value="" selected disabled>Select Vendor</option>
                                         @foreach ($Vendor as $v)
@@ -415,16 +415,25 @@
                                         @endforeach
                                     </select>
                                 </div>
-                                <button type="button" class="btn btn-primary shadow-sm" data-toggle="modal" data-target="#addVendorModal" style="padding: 0.38rem 0.75rem;" title="Add New Vendor">
+                                <button type="button" class="btn btn-primary shadow-sm" data-toggle="modal" data-target="#addVendorModal" style="padding: 0.38rem 0.6rem;" title="Add New Vendor">
                                     <i class="bi bi-plus-lg"></i>
                                 </button>
                             </div>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-xl-2 col-lg-2 col-md-4">
+                            <label class="form-label fw-bold mb-1 text-muted small text-truncate d-block" title="Raw Material Category">Raw Material Category</label>
+                            <select class="form-select select2" id="categoryFilter" name="category_id">
+                                <option value="">-- All Categories --</option>
+                                @foreach ($rawMaterialCategories ?? [] as $rmCat)
+                                    <option value="{{ $rmCat->id }}">{{ $rmCat->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-xl-2 col-lg-2 col-md-4">
                             <label class="form-label fw-bold mb-1 text-muted small">Date</label>
                             <input type="text" name="purchase_date" class="form-control datepicker-custom" value="{{ date('Y-m-d') }}">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-xl-2 col-lg-2 col-md-4">
                             <label class="form-label fw-bold mb-1 text-muted small">M.Bill / Remarks</label>
                             <input type="text" class="form-control" name="note" id="remarks" placeholder="Optional notes...">
                         </div>
@@ -457,10 +466,10 @@
                 {{-- PURCHASE ITEMS (FULL WIDTH) --}}
                 <div class="card-panel shadow-sm p-3 mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div class="section-title mb-0">Purchase Items</div>
+                        <div class="section-title mb-0">Purchase Raw Materials</div>
                         <div class="d-flex gap-2">
                             <button type="button" class="btn btn-sm btn-outline-success px-3 shadow-sm" data-toggle="modal" data-target="#quickAddProductModal">
-                                <i class="bi bi-plus-circle me-1"></i>Quick Add Product
+                                <i class="bi bi-plus-circle me-1"></i>Quick Add Material
                             </button>
                             <button type="button" class="btn btn-sm btn-primary px-3 shadow-sm" id="btnAdd">
                                 <i class="bi bi-plus-lg"></i> Add Row
@@ -472,7 +481,7 @@
                         <table class="table table-bordered sales-table mb-0" id="purchaseTable">
                             <thead>
                                 <tr>
-                                    <th class="col-product">Product</th>
+                                    <th class="col-product">Raw Material</th>
                                     <th class="col-unit">Unit</th>
                                     <th class="col-qty">Qty</th>
                                     <th class="col-price">Purchase Price</th>
@@ -959,7 +968,7 @@
 
             function initProductSelect2($el) {
                 $el.select2({
-                    placeholder: 'Search Product (Name / SKU / Barcode)',
+                    placeholder: 'Search Raw Material (Name / SKU / Code)',
                     allowClear: true,
                     width: '100%',
                     ajax: {
@@ -969,7 +978,9 @@
                         data: function(params) {
                             return {
                                 term: params.term,
-                                page: params.page || 1
+                                page: params.page || 1,
+                                raw_materials_only: 1,
+                                category_id: $('#categoryFilter').val() || ''
                             };
                         },
                         processResults: function(data, params) {
@@ -1040,6 +1051,7 @@
                 let stock = repo.stock !== undefined ? repo.stock : 0;
                 let sku = repo.sku || 'N/A';
                 let unit = repo.unit_name || 'Pcs';
+                let cat = repo.category_name ? ` | Cat: ${repo.category_name}` : '';
                 let stockVal = parseFloat(repo.stock_pieces !== undefined ? repo.stock_pieces : repo.stock) || 0;
                 let badgeClass = stockVal > 0 ? 'bg-success' : 'bg-danger';
 
@@ -1047,7 +1059,7 @@
                 <div class="clearfix">
                     <div class="float-start">
                         <div class="fw-bold">${repo.name || repo.text}</div>
-                        <small class="text-muted">SKU: ${sku} | Unit: ${unit}</small>
+                        <small class="text-muted">SKU: ${sku} | Unit: ${unit}${cat}</small>
                     </div>
                     <div class="float-end">
                         <span class="badge ${badgeClass} rounded-pill">Stock: ${stock}</span>

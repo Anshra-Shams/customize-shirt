@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\Category;
 use App\Models\Customer;
+use App\Models\CustomerLedger;
 use App\Models\CustomerOrder;
 use App\Models\CustomerOrderItem;
 use App\Models\Product;
@@ -93,9 +95,26 @@ class CustomerOrderController extends Controller
     {
         $customers = Customer::orderBy('customer_name')->get();
         $products = Product::with('unit')
+            ->where(function ($q) {
+                $q->where('is_raw_material', 0)
+                  ->where('is_part', 0);
+            })
             ->where('is_active', true)
             ->orderBy('item_name')
             ->get();
+
+        $rawMaterials = Product::rawMaterials()
+            ->with(['unit'])
+            ->withSum('warehouseStocks', 'total_pieces')
+            ->where('is_active', true)
+            ->orderBy('item_name')
+            ->get();
+
+        $rawMaterialCategories = Category::where('is_raw_material', 1)
+            ->orWhereIn('id', Product::rawMaterials()->whereNotNull('category_id')->pluck('category_id'))
+            ->orderBy('name')
+            ->get();
+
         $accounts = Account::whereHas('head', function ($q) {
             $q->whereIn('name', ['Cash', 'Bank']);
         })->where('status', 1)
@@ -111,7 +130,7 @@ class CustomerOrderController extends Controller
 
         $statuses = CustomerOrder::STATUSES;
 
-        return compact('customers', 'products', 'accounts', 'statuses');
+        return compact('customers', 'products', 'rawMaterials', 'rawMaterialCategories', 'accounts', 'statuses');
     }
 
     /**
@@ -147,6 +166,7 @@ class CustomerOrderController extends Controller
 
                 $this->syncOrderItems($order, $request);
                 $this->syncAdvanceJournalEntries($order);
+                $this->syncCustomerLedgerAdvance($order);
 
                 return $order;
             });
@@ -196,6 +216,69 @@ class CustomerOrderController extends Controller
     }
 
     /**
+     * Redirect to the Sales module for delivering the customer order.
+     */
+    public function deliver($id)
+    {
+        return redirect()->route('sales.from.order', $id);
+    }
+
+    /**
+     * Complete and record the delivery of a customer order, including handover details and final payment.
+     */
+    public function processDelivery(Request $request, $id)
+    {
+        $order = CustomerOrder::findOrFail($id);
+
+        $validated = $request->validate([
+            'delivery_date' => ['required', 'date'],
+            'received_by' => ['nullable', 'string', 'max:255'],
+            'delivery_notes' => ['nullable', 'string', 'max:2000'],
+            'collect_payment' => ['nullable'],
+            'payment_account_id' => ['nullable', 'array'],
+            'payment_account_id.*' => ['nullable', 'integer', 'exists:accounts,id'],
+            'payment_amount' => ['nullable', 'array'],
+            'payment_amount.*' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        try {
+            DB::transaction(function () use ($request, $validated, $order) {
+                $order->status = 'delivered';
+                $order->delivery_date = $validated['delivery_date'];
+                $order->delivered_at = now();
+                $order->delivered_by = auth()->id();
+                $order->received_by = !empty($validated['received_by'])
+                    ? trim($validated['received_by'])
+                    : $order->customer_display_name;
+                $order->delivery_notes = $validated['delivery_notes'] ?? null;
+
+                $collectPayment = $request->boolean('collect_payment') || !empty($request->input('payment_amount'));
+                if ($collectPayment) {
+                    $paymentData = $this->parseOrderPaymentMethods($request);
+                    $order->delivery_payment_amount = $paymentData['total'];
+                    $order->delivery_payment_methods = $paymentData['methods'];
+                } else {
+                    $order->delivery_payment_amount = 0;
+                    $order->delivery_payment_methods = [];
+                }
+
+                $order->save();
+
+                $this->syncAdvanceJournalEntries($order);
+            });
+
+            return redirect()
+                ->route('customer_orders.show', $order->id)
+                ->with('success', "Order #{$order->order_no} has been marked as Delivered successfully.");
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Failed to deliver order: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Update the specified customer order in storage.
      */
     public function update(Request $request, $id)
@@ -214,6 +297,7 @@ class CustomerOrderController extends Controller
 
                 $this->syncOrderItems($order, $request);
                 $this->syncAdvanceJournalEntries($order);
+                $this->syncCustomerLedgerAdvance($order);
             });
 
             $message = $request->boolean('confirm_preparing')
@@ -242,6 +326,16 @@ class CustomerOrderController extends Controller
 
         $order = CustomerOrder::findOrFail($id);
         $order->status = $request->status;
+
+        if ($request->status === 'delivered') {
+            if (!$order->delivered_at) {
+                $order->delivered_at = now();
+            }
+            if (!$order->delivered_by) {
+                $order->delivered_by = auth()->id();
+            }
+        }
+
         $order->save();
 
         if ($request->ajax() || $request->wantsJson()) {
@@ -276,6 +370,7 @@ class CustomerOrderController extends Controller
 
         DB::transaction(function () use ($order) {
             $this->journalService->reverseEntriesForSource($order);
+            CustomerLedger::where('description', 'like', "%Order #{$order->order_no}%")->delete();
             $order->delete();
         });
 
@@ -433,22 +528,22 @@ class CustomerOrderController extends Controller
     }
 
     /**
-     * Synchronize advance receipts for the order to the selected Account Ledgers.
+     * Synchronize advance and delivery receipts for the order to the selected Account Ledgers.
      * Reverses any previous entries for this order before recording current allocations.
      */
     private function syncAdvanceJournalEntries(CustomerOrder $order): void
     {
         $this->journalService->reverseEntriesForSource($order);
 
-        $methods = is_array($order->payment_methods) ? $order->payment_methods : [];
-        if (empty($methods)) {
-            return;
-        }
-
-        $customerLabel = $order->display_customer_name;
-        $entryDate = $order->order_date ? $order->order_date->format('Y-m-d') : now()->format('Y-m-d');
-        $description = "Advance received for Customer Order #{$order->order_no} ({$customerLabel})";
+        $customerLabel = $order->customer_display_name;
         $totalPosted = 0.0;
+        $customerParty = $order->customer_id ? Customer::find($order->customer_id) : null;
+
+        // 1. Advance Receipts
+        $methods = is_array($order->payment_methods) ? $order->payment_methods : [];
+        $entryDate = $order->order_date ? $order->order_date->format('Y-m-d') : now()->format('Y-m-d');
+        $advanceDescription = "Advance received for Customer Order #{$order->order_no} ({$customerLabel})";
+        $totalAdvance = 0.0;
 
         foreach ($methods as $method) {
             $accountId = !empty($method['account_id']) ? (int) $method['account_id'] : 0;
@@ -458,9 +553,43 @@ class CustomerOrderController extends Controller
             }
 
             // Debit selected Cash/Bank account so /accounts/{id}/ledger and current_balance reflect the advance
-            $this->journalService->recordEntry($order, $accountId, $amount, 0, $description, $entryDate);
-            $totalPosted += $amount;
+            $this->journalService->recordEntry($order, $accountId, $amount, 0, $advanceDescription, $entryDate);
+            $totalAdvance += $amount;
         }
+
+        // If no payment method accounts were provided but advance_amount > 0, fallback to default Cash account
+        if ($totalAdvance <= 0 && (float) $order->advance_amount > 0) {
+            $defaultCashAcc = Account::whereHas('head', function ($q) {
+                $q->where('name', 'Cash');
+            })->where('status', 1)->first() ?? Account::where('status', 1)->first();
+
+            if ($defaultCashAcc) {
+                $amount = round((float) $order->advance_amount, 2);
+                $this->journalService->recordEntry($order, $defaultCashAcc->id, $amount, 0, $advanceDescription, $entryDate);
+                $totalAdvance = $amount;
+            }
+        }
+
+        $totalPosted += $totalAdvance;
+
+        // 2. Delivery Receipts (if any)
+        $deliveryMethods = is_array($order->delivery_payment_methods) ? $order->delivery_payment_methods : [];
+        $deliveryDate = $order->delivered_at ? $order->delivered_at->format('Y-m-d') : ($order->delivery_date ? $order->delivery_date->format('Y-m-d') : now()->format('Y-m-d'));
+        $deliveryDescription = "Delivery payment for Customer Order #{$order->order_no} ({$customerLabel})";
+        $totalDelivery = 0.0;
+
+        foreach ($deliveryMethods as $method) {
+            $accountId = !empty($method['account_id']) ? (int) $method['account_id'] : 0;
+            $amount = round((float) ($method['amount'] ?? 0), 2);
+            if ($accountId <= 0 || $amount <= 0) {
+                continue;
+            }
+
+            // Debit selected Cash/Bank account so /accounts/{id}/ledger and current_balance reflect delivery payment
+            $this->journalService->recordEntry($order, $accountId, $amount, 0, $deliveryDescription, $deliveryDate);
+            $totalDelivery += $amount;
+        }
+        $totalPosted += $totalDelivery;
 
         if ($totalPosted > 0) {
             // Keep double-entry journal balanced without touching CustomerLedger or Sale/POS tables
@@ -468,7 +597,59 @@ class CustomerOrderController extends Controller
                 ? $this->balanceService->getAccountsReceivableId()
                 : $this->balanceService->getSalesRevenueId();
 
-            $this->journalService->recordEntry($order, $counterAccountId, 0, round($totalPosted, 2), $description, $entryDate);
+            if ($totalAdvance > 0) {
+                $this->journalService->recordEntry(
+                    $order,
+                    $counterAccountId,
+                    0,
+                    round($totalAdvance, 2),
+                    $advanceDescription,
+                    $entryDate,
+                    $customerParty
+                );
+            }
+            if ($totalDelivery > 0) {
+                $this->journalService->recordEntry(
+                    $order,
+                    $counterAccountId,
+                    0,
+                    round($totalDelivery, 2),
+                    $deliveryDescription,
+                    $deliveryDate,
+                    $customerParty
+                );
+            }
+        }
+    }
+
+    /**
+     * Synchronize advance receipt to Customer Ledger for registered customers.
+     */
+    private function syncCustomerLedgerAdvance(CustomerOrder $order): void
+    {
+        // 1. Remove previous advance entries for this order
+        CustomerLedger::where('description', 'like', "%Order #{$order->order_no}%")->delete();
+
+        // 2. If registered customer and advance > 0, post advance receipt to Customer Ledger
+        if ($order->customer_id && $order->advance_amount > 0) {
+            $customer = Customer::find($order->customer_id);
+            if ($customer) {
+                $lastEntry = CustomerLedger::where('customer_id', $customer->id)->latest('id')->first();
+                $prevBal = $lastEntry ? $lastEntry->closing_balance : ($customer->opening_balance ?? 0);
+                $newBal = $prevBal - (float) $order->advance_amount; // Advance received reduces customer balance (credit)
+
+                CustomerLedger::create([
+                    'customer_id' => $customer->id,
+                    'admin_or_user_id' => auth()->id() ?? 1,
+                    'previous_balance' => $prevBal,
+                    'opening_balance' => 0,
+                    'closing_balance' => $newBal,
+                    'description' => "Advance Received for Customer Order #{$order->order_no}",
+                ]);
+
+                $customer->previous_balance = $newBal;
+                $customer->save();
+            }
         }
     }
 
@@ -572,6 +753,8 @@ class CustomerOrderController extends Controller
             $clean[] = [
                 'name' => $name,
                 'amount' => $amount,
+                'category_id' => !empty($item['category_id']) ? (int) $item['category_id'] : null,
+                'product_id' => !empty($item['product_id']) ? (int) $item['product_id'] : null,
                 'is_custom' => !empty($item['is_custom']),
             ];
         }

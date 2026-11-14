@@ -848,7 +848,7 @@
                                             </div>
                                         @endcanany
                                         <!-- Purchase & Inventory -->
-                                        @canany(['vendors.view', 'purchases.view', 'purchase_pos.create'])
+                                        @canany(['vendors.view', 'purchases.view', 'purchase_pos.create', 'products.view'])
                                             <div class="col-group col-md-3">
                                                 <p class="category-heading">Purchase & Inventory</p>
                                                 <ul class="submenu-item">
@@ -866,6 +866,14 @@
                                                                     class="fas fa-cash-register"></i> Purchase POS</a>
                                                         </li>
                                                     @endcan
+                                                    @canany(['purchases.view', 'products.view'])
+                                                        <li><a href="{{ route('raw_materials.index') }}"><i
+                                                                    class="fas fa-cubes"></i> Raw Materials</a>
+                                                        </li>
+                                                        <li><a href="{{ route('raw_material_categories.index') }}"><i
+                                                                    class="fas fa-tags"></i> Raw Material Category</a>
+                                                        </li>
+                                                    @endcanany
                                                 </ul>
                                             </div>
                                         @endcanany

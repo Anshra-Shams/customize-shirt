@@ -330,7 +330,8 @@
                                             @csrf
                                             <select name="status" class="co-status-select co-order-status-select"
                                                 data-prev-status="{{ $order->status }}"
-                                                data-prepare-url="{{ route('customer_orders.prepare', $order->id) }}">
+                                                data-prepare-url="{{ route('customer_orders.prepare', $order->id) }}"
+                                                data-deliver-url="{{ route('sales.from.order', $order->id) }}">
                                                 @foreach ($statuses as $key => $label)
                                                     <option value="{{ $key }}" {{ $order->status === $key ? 'selected' : '' }}>
                                                         {{ $label }}
@@ -343,6 +344,15 @@
                                         @if (in_array($order->status, ['pending', 'in_progress']))
                                             <a href="{{ route('customer_orders.prepare', $order->id) }}" class="btn btn-sm btn-outline-warning" title="Confirm Preparing">
                                                 <i class="fas fa-tasks"></i>
+                                            </a>
+                                        @endif
+                                        @if ($order->status !== 'delivered' && $order->status !== 'cancelled')
+                                            <a href="{{ route('sales.from.order', $order->id) }}" class="btn btn-sm btn-outline-success" title="Deliver Order (Generate Sale)">
+                                                <i class="fas fa-truck"></i>
+                                            </a>
+                                        @elseif ($order->sale_id)
+                                            <a href="{{ route('sales.invoice', $order->sale_id) }}" target="_blank" class="btn btn-sm btn-outline-success" title="View Sale Invoice">
+                                                <i class="fas fa-file-invoice-dollar"></i>
                                             </a>
                                         @endif
                                         <a href="{{ route('customer_orders.show', $order->id) }}" class="btn btn-sm btn-outline-info" title="View">
@@ -406,10 +416,17 @@
             var selected = $(this).val();
             var prev = $(this).data('prev-status');
             var prepareUrl = $(this).data('prepare-url');
+            var deliverUrl = $(this).data('deliver-url');
 
             if (selected === 'in_progress' && prepareUrl) {
                 $(this).val(prev);
                 window.location.href = prepareUrl;
+                return;
+            }
+
+            if (selected === 'delivered' && deliverUrl) {
+                $(this).val(prev);
+                window.location.href = deliverUrl;
                 return;
             }
 

@@ -270,7 +270,8 @@
         color: #0f172a !important;
     }
 
-    /* Order Item Materials Button & Modal */
+    @if (!empty($isPrepareConfirmation))
+    /* Order Item Materials Button & Modal (Used during Order Preparation) */
     .co-mat-btn {
         display: inline-flex;
         align-items: center;
@@ -353,7 +354,7 @@
     }
     .co-mat-col-headers {
         display: grid;
-        grid-template-columns: 1fr 135px 38px;
+        grid-template-columns: 180px 1fr 120px 38px;
         gap: 10px;
         margin-bottom: 6px;
         font-size: 12px;
@@ -365,24 +366,45 @@
     }
     .co-mat-item-row {
         display: grid;
-        grid-template-columns: 1fr 135px 38px;
+        grid-template-columns: 180px 1fr 120px 38px;
         gap: 10px;
         align-items: center;
     }
+    .co-mat-item-row select,
     .co-mat-item-row input {
         height: 38px !important;
-        border: 1px solid #cbd5e1 !important;
+        border: 1.5px solid #cbd5e1 !important;
         border-radius: 8px !important;
-        padding: 6px 12px !important;
-        font-size: 13.5px !important;
+        padding: 6px 11px !important;
+        font-size: 13px !important;
         color: #0f172a !important;
         background: #ffffff !important;
         width: 100%;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
+    .co-mat-item-row select:focus,
     .co-mat-item-row input:focus {
         border-color: #2563eb !important;
         box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12) !important;
         outline: none !important;
+    }
+    .co-mat-row-mat-col {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+    }
+    @media (max-width: 650px) {
+        .co-mat-col-headers {
+            display: none;
+        }
+        .co-mat-item-row {
+            grid-template-columns: 1fr;
+            gap: 6px;
+        }
+        .co-mat-summary-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
     }
     .co-mat-custom-caption {
         font-size: 10.5px;
@@ -429,7 +451,7 @@
     }
     .co-mat-summary-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 10px;
         margin-top: 16px;
     }
@@ -445,7 +467,7 @@
         margin-bottom: 3px;
     }
     .co-mat-summary-box .value {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 700;
         color: #0f172a;
     }
@@ -458,6 +480,7 @@
         background: #ffffff;
         border-top: 1px solid #f1f5f9;
     }
+    @endif
 </style>
 
 @if ($errors->any())
@@ -517,33 +540,6 @@
             ? $prod->sale_price_per_piece
             : ((float) ($prod->price ?? 0));
         $unitName = optional($prod->unit)->name ?: 'Pcs';
-        $defaultMaterials = [];
-
-        if (!empty($prod->color)) {
-            $parsedVariants = json_decode($prod->color, true);
-            if (is_array($parsedVariants)) {
-                foreach ($parsedVariants as $pv) {
-                    if (is_array($pv) && !empty($pv['materials']) && is_array($pv['materials'])) {
-                        foreach ($pv['materials'] as $m) {
-                            if (!is_array($m)) {
-                                continue;
-                            }
-                            $mName = trim((string) ($m['name'] ?? ''));
-                            $mAmt = is_numeric($m['amount'] ?? null) ? round((float) $m['amount'], 2) : 0;
-                            if ($mName === '' && $mAmt == 0) {
-                                continue;
-                            }
-                            $defaultMaterials[] = [
-                                'name' => $mName,
-                                'amount' => $mAmt,
-                                'is_custom' => false,
-                            ];
-                        }
-                        break;
-                    }
-                }
-            }
-        }
 
         return [
             'id' => $prod->id,
@@ -551,9 +547,26 @@
             'item_code' => $prod->item_code,
             'default_price' => $defaultPrice,
             'unit_name' => $unitName,
-            'default_materials_json' => json_encode($defaultMaterials),
         ];
     });
+
+    $preparedRawMaterialCategories = collect($rawMaterialCategories ?? [])->map(function ($cat) {
+        return [
+            'id' => (int) $cat->id,
+            'name' => $cat->name,
+        ];
+    })->values();
+
+    $preparedRawMaterials = collect($rawMaterials ?? [])->map(function ($mat) {
+        return [
+            'id' => (int) $mat->id,
+            'item_name' => $mat->item_name,
+            'category_id' => $mat->category_id ? (int) $mat->category_id : null,
+            'price' => (float) ($mat->purchase_price_per_piece ?? 0),
+            'unit_name' => optional($mat->unit)->name ?: 'Pcs',
+            'stock' => (float) ($mat->warehouse_stocks_sum_total_pieces ?? 0),
+        ];
+    })->values();
 
     $flaskSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v5.2a2 2 0 0 1-.4 1.2L4.7 16.5A2.5 2.5 0 0 0 6.7 20.5h10.6a2.5 2.5 0 0 0 2-4l-4.9-7.1a2 2 0 0 1-.4-1.2V3"/><path d="M6.5 15h11"/></svg>';
 
@@ -562,12 +575,12 @@
         $rows = [];
         foreach ($oldItemNames as $idx => $nm) {
             $rawMat = old("item_materials.$idx", '[]');
-            $decodedMat = is_string($rawMat) ? (json_decode($rawMat, true) ?: []) : (is_array($rawMat) ? $rawMat : []);
+            $decodedMat = is_string($rawMat) ? json_decode($rawMat, true) : $rawMat;
             $rows[] = [
                 'product_id' => old("product_id.$idx"),
                 'item_name' => $nm,
                 'description' => old("item_description.$idx"),
-                'materials' => $decodedMat,
+                'materials' => is_array($decodedMat) ? $decodedMat : [],
                 'qty' => old("qty.$idx", 1),
                 'unit' => old("unit.$idx", 'Pcs'),
                 'price' => old("price.$idx", 0),
@@ -579,7 +592,7 @@
                 'product_id' => $it->product_id,
                 'item_name' => $it->item_name,
                 'description' => $it->description,
-                'materials' => is_array($it->materials) ? $it->materials : [],
+                'materials' => is_array($it->materials) && count($it->materials) > 0 ? $it->materials : [],
                 'qty' => $it->qty,
                 'unit' => $it->unit ?: 'Pcs',
                 'price' => $it->price,
@@ -726,26 +739,24 @@
         <table class="co-items-table" id="orderItemsTable">
             <thead>
                 <tr>
-                    <th class="text-start" style="width: 21%;">Catalog Product (Optional)</th>
-                    <th class="text-start" style="width: 18%;">Order Item / What Order Is For *</th>
-                    <th class="text-start" style="width: 17%;">Item Description / Specs</th>
-                    <th class="text-center" style="width: 11%;">Materials</th>
-                    <th style="width: 7%;">Unit</th>
-                    <th style="width: 7%;">Qty *</th>
+                    <th class="text-start" style="{{ $isPrepare ? 'width: 22%;' : 'width: 24%;' }}">Catalog Product (Optional)</th>
+                    <th class="text-start" style="{{ $isPrepare ? 'width: 20%;' : 'width: 22%;' }}">Order Item / What Order Is For *</th>
+                    <th class="text-start" style="{{ $isPrepare ? 'width: 18%;' : 'width: 20%;' }}">Item Description / Specs</th>
+                    @if ($isPrepare)
+                        <th class="text-center" style="width: 120px;">Materials</th>
+                    @endif
+                    <th style="width: 8%;">Unit</th>
+                    <th style="width: 8%;">Qty *</th>
                     <th style="width: 9%;">Unit Price</th>
-                    <th style="width: 10%;">Amount</th>
+                    <th style="width: 9%;">Amount</th>
                     <th style="width: 45px;">Action</th>
                 </tr>
             </thead>
             <tbody id="orderItemsBody">
                 @foreach ($rows as $row)
-                    @php
-                        $rowMaterials = is_array($row['materials'] ?? null) ? $row['materials'] : [];
-                        $rowMatCount = count($rowMaterials);
-                        $rowCustomCount = collect($rowMaterials)->where('is_custom', true)->count();
-                    @endphp
                     <tr class="order-item-row">
                         <td>
+                            <input type="hidden" name="item_materials[]" class="item-materials-input" value="{{ htmlspecialchars(json_encode($row['materials'] ?? [])) }}">
                             <select name="product_id[]" class="form-select product-picker" style="width:100%;">
                                 <option value="">Search Product (or leave Custom)</option>
                                 @foreach ($preparedProducts as $prod)
@@ -753,7 +764,6 @@
                                         data-name="{{ $prod['item_name'] }}"
                                         data-price="{{ $prod['default_price'] }}"
                                         data-unit="{{ $prod['unit_name'] }}"
-                                        data-materials="{{ $prod['default_materials_json'] }}"
                                         {{ (string) ($row['product_id'] ?? '') === (string) $prod['id'] ? 'selected' : '' }}>
                                         {{ $prod['item_name'] }}@if ($prod['item_code']) ({{ $prod['item_code'] }})@endif
                                     </option>
@@ -770,16 +780,21 @@
                                 placeholder="Color, size, design notes..."
                                 value="{{ $row['description'] ?? '' }}">
                         </td>
-                        <td class="text-center">
-                            <input type="hidden" name="item_materials[]" class="item-materials-input" value="{{ json_encode($rowMaterials) }}">
-                            <button type="button" class="co-mat-btn open-order-materials-btn">
-                                {!! $flaskSvg !!}
-                                <span>Materials (<span class="co-mat-count">{{ $rowMatCount }}</span>)</span>
-                            </button>
-                            <div class="co-row-custom-hint {{ $rowCustomCount > 0 ? '' : 'd-none' }}">
-                                {{ $rowCustomCount > 0 ? '+' . $rowCustomCount . ' customize' : '' }}
-                            </div>
-                        </td>
+                        @if ($isPrepare)
+                            <td class="text-center align-middle">
+                                @php
+                                    $rowMats = is_array($row['materials'] ?? null) ? $row['materials'] : [];
+                                    $rowCustomCount = collect($rowMats)->filter(fn($m) => !empty($m['is_custom']))->count();
+                                @endphp
+                                <button type="button" class="co-mat-btn open-order-materials-btn" title="View / Customize Materials">
+                                    {!! $flaskSvg !!}
+                                    <span>Materials (<span class="co-mat-count">{{ count($rowMats) }}</span>)</span>
+                                </button>
+                                <div class="co-row-custom-hint {{ $rowCustomCount > 0 ? '' : 'd-none' }}">
+                                    +{{ $rowCustomCount }} customize
+                                </div>
+                            </td>
+                        @endif
                         <td class="text-center">
                             <input type="text" name="unit[]" list="unitOptions" class="co-unit-pill item-unit"
                                 value="{{ $row['unit'] ?? 'Pcs' }}" placeholder="Pcs">
@@ -807,7 +822,7 @@
             </tbody>
             <tfoot>
                 <tr>
-                    <td colspan="7" class="text-end text-muted">Total Amount:</td>
+                    <td colspan="{{ $isPrepare ? 7 : 6 }}" class="text-end text-muted">Total Amount:</td>
                     <td class="text-end fs-6 text-dark"><span id="footerTotalAmount">0.00</span></td>
                     <td></td>
                 </tr>
@@ -883,6 +898,12 @@
                         <div class="col-6 fw-bold text-dark">Remaining Balance</div>
                         <div class="col-6 text-end fw-bold text-danger">Rs <span id="summaryRemainingBalance">0.00</span></div>
                     </div>
+                    @if ($isPrepare)
+                        <div class="row py-1 align-items-center" id="summaryProfitRow">
+                            <div class="col-6 fw-semibold text-muted">Est. Profit</div>
+                            <div class="col-6 text-end fw-bold" id="summaryProfitValue">Rs 0.00 (0%)</div>
+                        </div>
+                    @endif
                 </div>
             </div>
 
@@ -960,14 +981,14 @@
 <template id="orderItemRowTemplate">
     <tr class="order-item-row">
         <td>
+            <input type="hidden" name="item_materials[]" class="item-materials-input" value="[]">
             <select name="product_id[]" class="form-select product-picker" style="width:100%;">
                 <option value="">Search Product (or leave Custom)</option>
                 @foreach ($preparedProducts as $prod)
                     <option value="{{ $prod['id'] }}"
                         data-name="{{ $prod['item_name'] }}"
                         data-price="{{ $prod['default_price'] }}"
-                        data-unit="{{ $prod['unit_name'] }}"
-                        data-materials="{{ $prod['default_materials_json'] }}">
+                        data-unit="{{ $prod['unit_name'] }}">
                         {{ $prod['item_name'] }}@if ($prod['item_code']) ({{ $prod['item_code'] }})@endif
                     </option>
                 @endforeach
@@ -981,14 +1002,15 @@
             <input type="text" name="item_description[]" class="form-control"
                 placeholder="Color, size, design notes...">
         </td>
-        <td class="text-center">
-            <input type="hidden" name="item_materials[]" class="item-materials-input" value="[]">
-            <button type="button" class="co-mat-btn open-order-materials-btn">
-                {!! $flaskSvg !!}
-                <span>Materials (<span class="co-mat-count">0</span>)</span>
-            </button>
-            <div class="co-row-custom-hint d-none"></div>
-        </td>
+        @if ($isPrepare)
+            <td class="text-center align-middle">
+                <button type="button" class="co-mat-btn open-order-materials-btn" title="View / Customize Materials">
+                    {!! $flaskSvg !!}
+                    <span>Materials (<span class="co-mat-count">0</span>)</span>
+                </button>
+                <div class="co-row-custom-hint d-none"></div>
+            </td>
+        @endif
         <td class="text-center">
             <input type="text" name="unit[]" list="unitOptions" class="co-unit-pill item-unit"
                 value="Pcs" placeholder="Pcs">
@@ -1014,6 +1036,57 @@
     </tr>
 </template>
 
+@if ($isPrepare)
+    <!-- Order Item Materials Modal -->
+    <div class="modal fade" id="orderMaterialsModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 740px;">
+            <div class="modal-content">
+                <div class="co-mat-modal-header">
+                    <h5 class="co-mat-modal-title">Materials and services &middot; <span id="coMatModalItemLabel" class="text-primary">Order Item</span></h5>
+                    <button type="button" class="co-mat-modal-close" id="coMatModalCloseBtn" aria-label="Close">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="modal-body px-4 pt-2 pb-3">
+                    <div class="co-mat-col-headers">
+                        <div>Category</div>
+                        <div>Raw Material / Service</div>
+                        <div>Amount (Rs)</div>
+                        <div></div>
+                    </div>
+                    <div id="coMatModalRows"></div>
+                    <button type="button" class="co-mat-add-btn" id="coMatModalAddRowBtn">
+                        <i class="bi bi-plus-lg" style="font-size: 12px;"></i> Add material
+                    </button>
+
+                    <div class="co-mat-summary-grid">
+                        <div class="co-mat-summary-box">
+                            <div class="label">Materials cost</div>
+                            <div class="value" id="coMatModalTotalCost">Rs 0</div>
+                        </div>
+                        <div class="co-mat-summary-box">
+                            <div class="label">Order unit price</div>
+                            <div class="value" id="coMatModalUnitPrice">Rs 0</div>
+                        </div>
+                        <div class="co-mat-summary-box">
+                            <div class="label">Customize items</div>
+                            <div class="value" id="coMatModalCustomCount">0</div>
+                        </div>
+                        <div class="co-mat-summary-box">
+                            <div class="label">Est. Profit</div>
+                            <div class="value" id="coMatModalProfit">Rs 0 (0%)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="co-mat-modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3" id="coMatModalCancelBtn">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary px-4 fw-semibold" id="coMatModalSaveBtn">Apply & Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+@endif
+
 {{-- Hidden Template for New Payment Account Rows --}}
 <template id="coPaymentRowTemplate">
     <div class="d-flex gap-2 align-items-center mb-2 co-payment-row">
@@ -1030,54 +1103,6 @@
         </button>
     </div>
 </template>
-
-{{-- Order Item Materials & Customizations Modal --}}
-<div id="orderMaterialsModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 660px;">
-        <div class="modal-content">
-            <div class="co-mat-modal-header">
-                <h5 class="co-mat-modal-title">Materials and services &middot; <span id="coMatModalItemLabel">Order Item</span></h5>
-                <button type="button" class="co-mat-modal-close" id="coMatModalCloseBtn" aria-label="Close">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </div>
-            <div class="modal-body px-4 pt-2 pb-3 bg-white">
-                <div class="co-mat-scope-note">
-                    <i class="bi bi-info-circle text-primary me-1"></i>
-                    Extra or edited materials added here are saved <strong>only for this customer order</strong> and will not modify the catalog product.
-                </div>
-                <div class="co-mat-col-headers">
-                    <div>Name (material or service)</div>
-                    <div>Amount (Rs)</div>
-                    <div></div>
-                </div>
-                <div id="coMatModalRows"></div>
-                <button type="button" class="co-mat-add-btn" id="coMatModalAddRowBtn">
-                    <i class="bi bi-plus-lg" style="font-size: 12px;"></i> Add material
-                </button>
-
-                <div class="co-mat-summary-grid">
-                    <div class="co-mat-summary-box">
-                        <div class="label">Materials cost</div>
-                        <div class="value" id="coMatModalTotalCost">Rs 0</div>
-                    </div>
-                    <div class="co-mat-summary-box">
-                        <div class="label">Order unit price</div>
-                        <div class="value" id="coMatModalUnitPrice">Rs 0</div>
-                    </div>
-                    <div class="co-mat-summary-box">
-                        <div class="label">Customize items</div>
-                        <div class="value text-primary" id="coMatModalCustomCount">0</div>
-                    </div>
-                </div>
-            </div>
-            <div class="co-mat-modal-footer">
-                <button type="button" class="btn co-btn-secondary py-1 px-3" id="coMatModalCancelBtn">Cancel</button>
-                <button type="button" class="btn co-btn-primary py-1 px-3" id="coMatModalSaveBtn">Save</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 @section('js')
 <script>
@@ -1155,6 +1180,28 @@
             $('#summaryGrandTotal').text(grandTotal.toFixed(2));
             $('#summaryRemainingBalance').text(remainingBalance.toFixed(2));
             $('#paymentMethodsTotalDisplay').text(advancePaid.toFixed(2));
+
+            @if ($isPrepare)
+                var orderMatCost = 0;
+                $('#orderItemsBody .order-item-row').each(function() {
+                    var $r = $(this);
+                    var q = parseFloat($r.find('.item-qty').val()) || 0;
+                    var mats = parseOrderMaterials($r.find('.item-materials-input').val());
+                    var mCost = mats.reduce(function(acc, m) { return acc + (parseFloat(m.amount) || 0); }, 0);
+                    orderMatCost += (mCost * q);
+                });
+                var profit = grandTotal - orderMatCost;
+                var profitPct = grandTotal > 0 ? Math.round((profit / grandTotal) * 100) : 0;
+                var $profVal = $('#summaryProfitValue');
+                if ($profVal.length) {
+                    $profVal.text(formatOrderRs(profit) + (grandTotal > 0 ? ' (' + profitPct + '%)' : ''));
+                    if (profit >= 0) {
+                        $profVal.removeClass('text-danger text-muted').addClass('text-success');
+                    } else {
+                        $profVal.removeClass('text-success text-muted').addClass('text-danger');
+                    }
+                }
+            @endif
         }
 
         function syncAdvanceFromPaymentRows() {
@@ -1238,7 +1285,7 @@
             }
         }
 
-        // Product selection auto-fills item name, unit, price, and default materials
+        // Product selection auto-fills item name, unit, and price
         $(document).on('change', '.product-picker', function() {
             var $row = $(this).closest('.order-item-row');
             var $opt = $(this).find('option:selected');
@@ -1246,20 +1293,10 @@
                 var name = $opt.data('name') || '';
                 var price = parseFloat($opt.data('price')) || 0;
                 var unit = $opt.data('unit') || 'Pcs';
-                var rawMatAttr = $opt.attr('data-materials') || '[]';
-                var defaultMats = parseOrderMaterials(rawMatAttr).map(function(m) {
-                    return {
-                        name: String(m.name || '').trim(),
-                        amount: parseFloat(m.amount) || 0,
-                        is_custom: false
-                    };
-                });
 
                 $row.find('.item-name-input').val(name);
                 $row.find('.item-unit').val(unit);
                 $row.find('.item-price').val(price.toFixed(2));
-                $row.find('.item-materials-input').val(JSON.stringify(defaultMats));
-                refreshOrderRowMaterialsUI($row);
                 recalculateOrderTotals();
             }
         });
@@ -1296,138 +1333,344 @@
             recalculateOrderTotals();
         });
 
-        // ---- Order Item Materials Modal Logic (Order-scoped, never alters Catalog) ----
-        var $activeOrderMaterialRow = null;
+        @if ($isPrepare)
+            // ---- Order Item Materials Modal Logic (Only during Order Preparation) ----
+            var rawMaterialCategories = {!! json_encode($preparedRawMaterialCategories ?? []) !!};
+            var rawMaterialsList = {!! json_encode($preparedRawMaterials ?? []) !!};
+            var $activeOrderMaterialRow = null;
 
-        function formatOrderRs(val) {
-            var n = parseFloat(val) || 0;
-            var clean = Math.abs(n - Math.round(n)) < 0.005
-                ? Math.round(n).toLocaleString()
-                : parseFloat(n.toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 });
-            return 'Rs ' + clean;
-        }
-
-        function renderOrderMaterialModalRow(item) {
-            var name = (item && item.name) ? item.name : '';
-            var amount = (item && item.amount !== undefined && item.amount !== '') ? item.amount : '';
-            var isCustom = item ? !!item.is_custom : true;
-
-            var $wrap = $('<div class="co-mat-item-wrap"></div>').attr('data-is-custom', isCustom ? '1' : '0');
-            var $row = $('<div class="co-mat-item-row"></div>');
-            var $nameInp = $('<input type="text" class="co-mat-row-name" placeholder="e.g. Extra Lace, Pocket, Stitching" autocomplete="off">').val(name);
-            var $amtInp = $('<input type="number" step="any" min="0" class="co-mat-row-amount" placeholder="0">').val(amount);
-            var $delBtn = $('<button type="button" class="co-mat-row-del" title="Remove material"><i class="bi bi-trash"></i></button>');
-
-            $row.append($nameInp, $amtInp, $delBtn);
-            $wrap.append($row);
-
-            var $caption = $('<div class="co-mat-custom-caption"></div>').text('customize');
-            if (!isCustom) {
-                $caption.hide();
+            function formatOrderRs(val) {
+                var n = parseFloat(val) || 0;
+                var clean = Math.abs(n - Math.round(n)) < 0.005
+                    ? Math.round(n).toLocaleString()
+                    : parseFloat(n.toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                return 'Rs ' + clean;
             }
-            $wrap.append($caption);
 
-            $('#coMatModalRows').append($wrap);
-            return $wrap;
-        }
+            function renderOrderMaterialModalRow(item) {
+                var rawName = (item && item.name) ? String(item.name).trim() : '';
+                var amount = (item && item.amount !== undefined && item.amount !== '') ? item.amount : '';
+                var catId = (item && item.category_id) ? String(item.category_id) : '';
+                var prodId = (item && item.product_id) ? String(item.product_id) : '';
+                var isCustom = item ? !!item.is_custom : false;
 
-        function collectOrderModalMaterials() {
-            var list = [];
-            $('#coMatModalRows .co-mat-item-wrap').each(function() {
-                var $w = $(this);
-                var name = ($w.find('.co-mat-row-name').val() || '').trim();
-                var rawAmt = $w.find('.co-mat-row-amount').val();
-                var amount = rawAmt === '' ? 0 : (parseFloat(rawAmt) || 0);
-                var isCustom = $w.attr('data-is-custom') === '1';
-                if (name !== '' || amount > 0) {
-                    list.push({ name: name, amount: amount, is_custom: isCustom });
+                // If legacy item without catId/prodId, check if name matches a raw material
+                if (!catId && !prodId && rawName !== '') {
+                    var match = rawMaterialsList.find(function(m) {
+                        return (m.item_name || '').toLowerCase() === rawName.toLowerCase();
+                    });
+                    if (match) {
+                        catId = String(match.category_id || '');
+                        prodId = String(match.id);
+                        isCustom = false;
+                    } else {
+                        catId = '__custom__';
+                        isCustom = true;
+                    }
                 }
-            });
-            return list;
-        }
 
-        function updateOrderMaterialModalSummary() {
-            if (!$activeOrderMaterialRow) return;
-            var list = collectOrderModalMaterials();
-            var totalCost = list.reduce(function(sum, it) { return sum + (parseFloat(it.amount) || 0); }, 0);
-            var customCount = list.filter(function(it) { return !!it.is_custom; }).length;
-            var unitPrice = parseFloat($activeOrderMaterialRow.find('.item-price').val()) || 0;
+                var $wrap = $('<div class="co-mat-item-wrap"></div>').attr('data-is-custom', isCustom ? '1' : '0');
+                var $row = $('<div class="co-mat-item-row"></div>');
 
-            $('#coMatModalTotalCost').text(formatOrderRs(totalCost));
-            $('#coMatModalUnitPrice').text(formatOrderRs(unitPrice));
-            $('#coMatModalCustomCount').text(customCount);
-        }
-
-        function showOrderMaterialsModal() {
-            var modalEl = document.getElementById('orderMaterialsModal');
-            if (!modalEl) return;
-            if (typeof $('#orderMaterialsModal').modal === 'function') {
-                $('#orderMaterialsModal').modal('show');
-            } else if (window.bootstrap && window.bootstrap.Modal) {
-                window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
-            }
-        }
-
-        function hideOrderMaterialsModal() {
-            var modalEl = document.getElementById('orderMaterialsModal');
-            if (!modalEl) return;
-            if (typeof $('#orderMaterialsModal').modal === 'function') {
-                $('#orderMaterialsModal').modal('hide');
-            } else if (window.bootstrap && window.bootstrap.Modal) {
-                window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
-            }
-        }
-
-        $(document).on('click', '.open-order-materials-btn', function() {
-            $activeOrderMaterialRow = $(this).closest('.order-item-row');
-            var itemLabel = ($activeOrderMaterialRow.find('.item-name-input').val() || '').trim() || 'Order Item';
-            $('#coMatModalItemLabel').text(itemLabel);
-
-            var list = parseOrderMaterials($activeOrderMaterialRow.find('.item-materials-input').val());
-            $('#coMatModalRows').empty();
-
-            if (list.length > 0) {
-                list.forEach(function(item) {
-                    renderOrderMaterialModalRow(item);
+                // 1. Category Select
+                var $catSelect = $('<select class="co-mat-row-cat form-select form-select-sm"></select>');
+                $catSelect.append('<option value="">Select Category</option>');
+                rawMaterialCategories.forEach(function(cat) {
+                    var $opt = $('<option></option>').val(String(cat.id)).text(cat.name);
+                    if (String(cat.id) === catId) {
+                        $opt.prop('selected', true);
+                    }
+                    $catSelect.append($opt);
                 });
-            } else {
-                renderOrderMaterialModalRow({ name: '', amount: '', is_custom: true });
+                var $customCatOpt = $('<option value="__custom__">+ Custom / Service</option>');
+                if (catId === '__custom__') {
+                    $customCatOpt.prop('selected', true);
+                }
+                $catSelect.append($customCatOpt);
+
+                // 2. Material Column (Dropdown & Custom text input)
+                var $matCol = $('<div class="co-mat-row-mat-col"></div>');
+                var $matSelect = $('<select class="co-mat-row-mat form-select form-select-sm"></select>');
+                var $customNameInp = $('<input type="text" class="co-mat-row-custom-name form-control form-control-sm" placeholder="Enter custom item name..." autocomplete="off">');
+                $matCol.append($matSelect, $customNameInp);
+
+                // 3. Amount Input
+                var $amtInp = $('<input type="number" step="any" min="0" class="co-mat-row-amount form-control form-control-sm" placeholder="0">').val(amount);
+
+                // 4. Delete button
+                var $delBtn = $('<button type="button" class="co-mat-row-del" title="Remove material"><i class="bi bi-trash"></i></button>');
+
+                $row.append($catSelect, $matCol, $amtInp, $delBtn);
+                $wrap.append($row);
+
+                var $caption = $('<div class="co-mat-custom-caption"></div>').text('customize');
+                if (!isCustom) {
+                    $caption.hide();
+                }
+                $wrap.append($caption);
+
+                function refreshMaterialDropdown(selectedCat, targetProdId, customVal, autoFillAmount) {
+                    $matSelect.empty();
+                    $customNameInp.val(customVal || '').hide();
+
+                    if (selectedCat === '__custom__') {
+                        $matSelect.hide();
+                        $customNameInp.attr('placeholder', 'e.g. Stitching, Embroidery, Extra Lace').show();
+                        $wrap.attr('data-is-custom', '1');
+                        $caption.show();
+                        return;
+                    }
+
+                    if (!selectedCat) {
+                        $matSelect.show().prop('disabled', true);
+                        $matSelect.append('<option value="">Choose category first...</option>');
+                        $wrap.attr('data-is-custom', '0');
+                        $caption.hide();
+                        return;
+                    }
+
+                    $matSelect.show().prop('disabled', false);
+                    var filtered = rawMaterialsList.filter(function(m) {
+                        return String(m.category_id) === String(selectedCat);
+                    });
+
+                    $matSelect.append('<option value="">Select Raw Material</option>');
+                    filtered.forEach(function(m) {
+                        var costLabel = m.price > 0 ? ' (Rs ' + m.price + ')' : '';
+                        var $opt = $('<option></option>')
+                            .val(String(m.id))
+                            .text(m.item_name + costLabel)
+                            .attr('data-price', m.price)
+                            .attr('data-name', m.item_name);
+                        if (String(m.id) === String(targetProdId)) {
+                            $opt.prop('selected', true);
+                        }
+                        $matSelect.append($opt);
+                    });
+
+                    var otherOptText = filtered.length === 0 ? '+ Enter custom item in this category' : '+ Other / Custom in this category';
+                    var $otherOpt = $('<option value="__custom_in_cat__"></option>').text(otherOptText);
+
+                    if (String(targetProdId) === '__custom_in_cat__' || (filtered.length === 0 && !targetProdId && customVal)) {
+                        $otherOpt.prop('selected', true);
+                        $customNameInp.attr('placeholder', 'Enter custom material name...').show();
+                        $wrap.attr('data-is-custom', '1');
+                        $caption.show();
+                    }
+                    $matSelect.append($otherOpt);
+
+                    if (String(targetProdId) === '__custom_in_cat__') {
+                        $customNameInp.attr('placeholder', 'Enter custom material name...').show();
+                        $wrap.attr('data-is-custom', '1');
+                        $caption.show();
+                    } else if (targetProdId) {
+                        var foundItem = filtered.find(function(m) { return String(m.id) === String(targetProdId); });
+                        if (foundItem) {
+                            if (autoFillAmount) {
+                                $amtInp.val(foundItem.price);
+                            }
+                            $wrap.attr('data-is-custom', '0');
+                            $caption.hide();
+                        }
+                    } else {
+                        $wrap.attr('data-is-custom', '0');
+                        $caption.hide();
+                    }
+                }
+
+                // Initial population
+                var initialCustomVal = (isCustom && !prodId) ? rawName : '';
+                refreshMaterialDropdown(catId, prodId, initialCustomVal, false);
+
+                // Category select changed
+                $catSelect.on('change', function() {
+                    var selected = $(this).val();
+                    if (selected === '__custom__') {
+                        refreshMaterialDropdown('__custom__', '', '', false);
+                        $customNameInp.focus();
+                    } else if (selected) {
+                        refreshMaterialDropdown(selected, '', '', false);
+                        $matSelect.focus();
+                    } else {
+                        refreshMaterialDropdown('', '', '', false);
+                    }
+                    updateOrderMaterialModalSummary();
+                });
+
+                // Material dropdown changed
+                $matSelect.on('change', function() {
+                    var selected = $(this).val();
+                    if (selected === '__custom_in_cat__') {
+                        $customNameInp.attr('placeholder', 'Enter custom material name...').show().focus();
+                        $wrap.attr('data-is-custom', '1');
+                        $caption.show();
+                    } else if (selected) {
+                        $customNameInp.hide().val('');
+                        $wrap.attr('data-is-custom', '0');
+                        $caption.hide();
+                        var $opt = $(this).find('option:selected');
+                        var cost = parseFloat($opt.attr('data-price')) || 0;
+                        $amtInp.val(cost);
+                    } else {
+                        $customNameInp.hide().val('');
+                        $wrap.attr('data-is-custom', '0');
+                        $caption.hide();
+                    }
+                    updateOrderMaterialModalSummary();
+                });
+
+                $customNameInp.on('input', function() {
+                    $wrap.attr('data-is-custom', '1');
+                    $caption.show();
+                    updateOrderMaterialModalSummary();
+                });
+
+                $amtInp.on('input', function() {
+                    updateOrderMaterialModalSummary();
+                });
+
+                $('#coMatModalRows').append($wrap);
+                return $wrap;
             }
 
-            updateOrderMaterialModalSummary();
-            showOrderMaterialsModal();
-        });
+            function collectOrderModalMaterials() {
+                var list = [];
+                $('#coMatModalRows .co-mat-item-wrap').each(function() {
+                    var $w = $(this);
+                    var catVal = $w.find('.co-mat-row-cat').val() || '';
+                    var matVal = $w.find('.co-mat-row-mat').val() || '';
+                    var customName = ($w.find('.co-mat-row-custom-name').val() || '').trim();
+                    var rawAmt = $w.find('.co-mat-row-amount').val();
+                    var amount = rawAmt === '' ? 0 : (parseFloat(rawAmt) || 0);
 
-        $('#coMatModalAddRowBtn').on('click', function() {
-            var $added = renderOrderMaterialModalRow({ name: '', amount: '', is_custom: true });
-            $added.find('.co-mat-row-name').focus();
-            updateOrderMaterialModalSummary();
-        });
+                    var name = '';
+                    var categoryId = null;
+                    var productId = null;
+                    var isCustom = false;
 
-        $(document).on('input', '#coMatModalRows .co-mat-row-name, #coMatModalRows .co-mat-row-amount', function() {
-            var $wrap = $(this).closest('.co-mat-item-wrap');
-            $wrap.attr('data-is-custom', '1');
-            $wrap.find('.co-mat-custom-caption').show();
-            updateOrderMaterialModalSummary();
-        });
+                    if (catVal === '__custom__') {
+                        name = customName;
+                        isCustom = true;
+                    } else if (catVal !== '') {
+                        categoryId = parseInt(catVal, 10) || null;
+                        if (matVal === '__custom_in_cat__') {
+                            name = customName;
+                            isCustom = true;
+                        } else if (matVal !== '') {
+                            productId = parseInt(matVal, 10) || null;
+                            var found = rawMaterialsList.find(function(m) { return String(m.id) === String(matVal); });
+                            name = found ? found.item_name : $w.find('.co-mat-row-mat option:selected').text();
+                            isCustom = false;
+                        } else if (customName !== '') {
+                            name = customName;
+                            isCustom = true;
+                        }
+                    } else if (customName !== '') {
+                        name = customName;
+                        isCustom = true;
+                    }
 
-        $(document).on('click', '#coMatModalRows .co-mat-row-del', function() {
-            $(this).closest('.co-mat-item-wrap').remove();
-            if ($('#coMatModalRows .co-mat-item-wrap').length === 0) {
-                renderOrderMaterialModalRow({ name: '', amount: '', is_custom: true });
+                    if (name !== '' || amount > 0) {
+                        list.push({
+                            name: name,
+                            amount: amount,
+                            category_id: categoryId,
+                            product_id: productId,
+                            is_custom: isCustom
+                        });
+                    }
+                });
+                return list;
             }
-            updateOrderMaterialModalSummary();
-        });
 
-        $('#coMatModalCloseBtn, #coMatModalCancelBtn').on('click', hideOrderMaterialsModal);
+            function updateOrderMaterialModalSummary() {
+                if (!$activeOrderMaterialRow) return;
+                var list = collectOrderModalMaterials();
+                var totalCost = list.reduce(function(sum, it) { return sum + (parseFloat(it.amount) || 0); }, 0);
+                var customCount = list.filter(function(it) { return !!it.is_custom; }).length;
+                var unitPrice = parseFloat($activeOrderMaterialRow.find('.item-price').val()) || 0;
+                var profit = unitPrice - totalCost;
+                var profitPct = unitPrice > 0 ? Math.round((profit / unitPrice) * 100) : 0;
 
-        $('#coMatModalSaveBtn').on('click', function() {
-            if (!$activeOrderMaterialRow) return;
-            var list = collectOrderModalMaterials();
-            $activeOrderMaterialRow.find('.item-materials-input').val(JSON.stringify(list));
-            refreshOrderRowMaterialsUI($activeOrderMaterialRow);
-            hideOrderMaterialsModal();
-        });
+                $('#coMatModalTotalCost').text(formatOrderRs(totalCost));
+                $('#coMatModalUnitPrice').text(formatOrderRs(unitPrice));
+                $('#coMatModalCustomCount').text(customCount);
+
+                var $profitVal = $('#coMatModalProfit');
+                var profitText = formatOrderRs(profit) + (unitPrice > 0 ? ' (' + profitPct + '%)' : '');
+                $profitVal.text(profitText);
+                if (profit >= 0) {
+                    $profitVal.removeClass('text-danger text-muted').addClass('text-success');
+                } else {
+                    $profitVal.removeClass('text-success text-muted').addClass('text-danger');
+                }
+            }
+
+            function showOrderMaterialsModal() {
+                var modalEl = document.getElementById('orderMaterialsModal');
+                if (!modalEl) return;
+                if (typeof $('#orderMaterialsModal').modal === 'function') {
+                    $('#orderMaterialsModal').modal('show');
+                } else if (window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+            }
+
+            function hideOrderMaterialsModal() {
+                var modalEl = document.getElementById('orderMaterialsModal');
+                if (!modalEl) return;
+                if (typeof $('#orderMaterialsModal').modal === 'function') {
+                    $('#orderMaterialsModal').modal('hide');
+                } else if (window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
+            }
+
+            $(document).on('click', '.open-order-materials-btn', function() {
+                $activeOrderMaterialRow = $(this).closest('.order-item-row');
+                var itemLabel = ($activeOrderMaterialRow.find('.item-name-input').val() || '').trim() || 'Order Item';
+                $('#coMatModalItemLabel').text(itemLabel);
+
+                var list = parseOrderMaterials($activeOrderMaterialRow.find('.item-materials-input').val());
+                $('#coMatModalRows').empty();
+
+                if (list.length > 0) {
+                    list.forEach(function(item) {
+                        renderOrderMaterialModalRow(item);
+                    });
+                } else {
+                    renderOrderMaterialModalRow({ name: '', amount: '', is_custom: false });
+                }
+
+                updateOrderMaterialModalSummary();
+                showOrderMaterialsModal();
+            });
+
+            $('#coMatModalAddRowBtn').on('click', function() {
+                var $added = renderOrderMaterialModalRow({ name: '', amount: '', is_custom: false });
+                $added.find('.co-mat-row-cat').focus();
+                updateOrderMaterialModalSummary();
+            });
+
+            $(document).on('click', '#coMatModalRows .co-mat-row-del', function() {
+                $(this).closest('.co-mat-item-wrap').remove();
+                if ($('#coMatModalRows .co-mat-item-wrap').length === 0) {
+                    renderOrderMaterialModalRow({ name: '', amount: '', is_custom: false });
+                }
+                updateOrderMaterialModalSummary();
+            });
+
+            $('#coMatModalCloseBtn, #coMatModalCancelBtn').on('click', hideOrderMaterialsModal);
+
+            $('#coMatModalSaveBtn').on('click', function() {
+                if (!$activeOrderMaterialRow) return;
+                var list = collectOrderModalMaterials();
+                $activeOrderMaterialRow.find('.item-materials-input').val(JSON.stringify(list));
+                refreshOrderRowMaterialsUI($activeOrderMaterialRow);
+                hideOrderMaterialsModal();
+                recalculateOrderTotals();
+            });
+        @endif
 
         recalculateOrderTotals();
     });

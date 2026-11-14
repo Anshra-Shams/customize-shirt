@@ -459,6 +459,12 @@
             font-size: 0.95rem;
         }
 
+        @if (isset($fromOrder) && $fromOrder)
+        .col-stock, .col-size, .col-color, .col-pieces {
+            display: none !important;
+        }
+        @endif
+
         .bottom-summary-strip {
             background: #ffffff;
             border: 1px solid #cbd5e1;
@@ -498,6 +504,35 @@
                 @csrf
                 <input type="hidden" id="booking_id" name="booking_id" value="">
                 <input type="hidden" id="action" name="action" value="sale">
+                @if (isset($fromOrder) && $fromOrder)
+                    <input type="hidden" name="customer_order_id" id="customer_order_id" value="{{ $fromOrder->id }}">
+                    <input type="hidden" id="orderAdvanceAmountHidden" name="order_advance_amount" value="{{ $fromOrder->advance_amount }}">
+                    <div class="alert alert-success d-flex justify-content-between align-items-center py-2 px-3 mb-2 shadow-sm rounded-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fas fa-truck text-success fs-5"></i>
+                            <div>
+                                <strong class="text-success">Delivering Customer Order #{{ $fromOrder->order_no }}</strong>
+                                <span class="text-dark fw-bold ms-2">&mdash; {{ $fromOrder->customer_display_name }}</span>
+                                <span class="badge bg-light text-dark border ms-2">Order Total: Rs {{ number_format($fromOrder->total_amount, 2) }}</span>
+                                @if ($fromOrder->advance_amount > 0)
+                                    <span class="badge bg-success text-white ms-1">Advance Received: Rs {{ number_format($fromOrder->advance_amount, 2) }}</span>
+                                    <span class="badge bg-danger text-white ms-1">Balance Due: Rs {{ number_format(max(0, $fromOrder->total_amount - $fromOrder->advance_amount), 2) }}</span>
+                                @endif
+                                <div class="small text-dark mt-1">
+                                    <span class="text-muted fw-bold">Order Items:</span>
+                                    @foreach ($fromOrder->items as $oItem)
+                                        <span class="badge bg-white text-dark border ms-1">{{ $oItem->item_name }} &times; {{ rtrim(rtrim(number_format($oItem->qty, 2), '0'), '.') }} {{ $oItem->unit }}</span>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <a href="{{ route('customer_orders.show', $fromOrder->id) }}" class="btn btn-sm btn-outline-success fw-bold" target="_blank">
+                                <i class="fas fa-eye me-1"></i> View Order Slip
+                            </a>
+                        </div>
+                    </div>
+                @endif
 
                 {{-- TOP HEADER BAR --}}
                 <div class="d-flex justify-content-between align-items-center mb-2 px-1">
@@ -574,14 +609,16 @@
                             <input type="text" name="sale_date" class="form-control datepicker-custom text-center fw-bold" id="displayDateInput" value="{{ date('Y-m-d') }}">
                         </div>
                         <!-- Cr. Days -->
+                        @if (!isset($fromOrder) || !$fromOrder)
                         <div class="col-sm-1">
                             <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Cr. Days</label>
                             <input type="number" class="form-control text-center fw-bold" name="credit_days" placeholder="0" min="0" value="{{ $sale->credit_days ?? '0' }}">
                         </div>
+                        @endif
                         <!-- M.Bill / Remarks -->
-                        <div class="col-sm-2">
+                        <div class="{{ isset($fromOrder) && $fromOrder ? 'col-sm-3' : 'col-sm-2' }}">
                             <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">M.Bill / Remarks</label>
-                            <input type="text" class="form-control" name="reference" id="remarks" placeholder="Enter remarks">
+                            <input type="text" class="form-control" name="reference" id="remarks" value="{{ isset($fromOrder) && $fromOrder ? 'Customer Order #' . $fromOrder->order_no : '' }}" placeholder="Enter remarks">
                         </div>
                         <!-- Customer & Walk-in Toggle -->
                         <div class="col-sm-4">
@@ -625,11 +662,14 @@
                             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="section-title mb-0" style="font-size:0.8rem;">Order Items (<span id="itemsRowCount">0</span>)</div>
+                                    @if (!isset($fromOrder) || !$fromOrder)
                                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" data-bs-toggle="offcanvas" data-bs-target="#quickProductsOffcanvas" style="font-size:0.72rem;">
                                         <i class="fas fa-th me-1"></i>Quick Products Panel
                                     </button>
+                                    @endif
                                 </div>
 
+                                @if (!isset($fromOrder) || !$fromOrder)
                                 <!-- BARCODE SCANNER INPUT -->
                                 <div class="d-flex align-items-center" style="min-width: 260px; max-width: 380px; flex: 1;">
                                     <div class="input-group input-group-sm shadow-sm" style="border-radius: 20px; overflow: hidden; border: 1.5px solid #2563eb;">
@@ -651,6 +691,7 @@
                                         <i class="fas fa-plus me-1"></i>Add Row
                                     </button>
                                 </div>
+                                @endif
                             </div>
 
                             <div class="table-responsive flex-grow-1" style="overflow-x: auto; overflow-y: visible;">
@@ -806,12 +847,22 @@
                                     <span class="fw-bold text-dark">Net Total</span>
                                     <span class="summary-val-net" id="tSub">0.00</span>
                                 </div>
+                                @if (isset($fromOrder) && $fromOrder)
+                                <div class="summary-row">
+                                    <span class="text-muted">Order Advance</span>
+                                    <span class="fw-bold text-success" id="summaryOrderAdvance">Rs {{ number_format($fromOrder->advance_amount ?? 0, 2) }}</span>
+                                </div>
+                                <div class="summary-row">
+                                    <span class="fw-bold text-dark">Balance Due</span>
+                                    <span class="fw-bold text-primary" id="summaryBalanceDue">Rs {{ number_format(max(0, $fromOrder->total_amount - ($fromOrder->advance_amount ?? 0)), 2) }}</span>
+                                </div>
+                                @endif
                                 <div class="summary-row">
                                     <span class="text-muted">Total Paid</span>
                                     <span class="fw-bold text-success" id="receiptsTotalBadge">0.00</span>
                                 </div>
                                 <div class="summary-row pt-1">
-                                    <span class="fw-bold text-danger">Change</span>
+                                    <span class="fw-bold text-danger" id="summaryChangeLabel">Change</span>
                                     <span class="summary-val-change" id="walkinChange">-0.00</span>
                                 </div>
                             </div>
@@ -830,7 +881,7 @@
                                                 <option value="{{ $acc->id }}" {{ str_contains(strtolower($acc->title), 'cash') || str_contains(strtolower($acc->title), 'easypaisa') ? 'selected' : '' }}>{{ $acc->title }}</option>
                                             @endforeach
                                         </select>
-                                        <input type="number" step="0.01" class="form-control form-control-sm text-end rv-amount fw-bold" name="receipt_amount[]" placeholder="0.00" style="width: 110px; font-size:0.75rem;">
+                                        <input type="number" step="0.01" class="form-control form-control-sm text-end rv-amount fw-bold" name="receipt_amount[]" value="{{ isset($fromOrder) && $fromOrder ? max(0, $fromOrder->total_amount - $fromOrder->advance_amount) : '' }}" placeholder="0.00" style="width: 110px; font-size:0.75rem;">
                                     </div>
                                 </div>
 
@@ -857,6 +908,13 @@
                         </div>
                     </div>
 
+                    @if (isset($fromOrder) && $fromOrder)
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted fw-semibold" style="font-size:0.8rem;">Advance</span>
+                        <span class="fs-6 fw-bold text-success" id="bottomAdvanceVal">Rs {{ number_format($fromOrder->advance_amount ?? 0, 2) }}</span>
+                    </div>
+                    @endif
+
                     <div class="d-flex align-items-center gap-2">
                         <span class="text-muted fw-semibold" style="font-size:0.8rem;">Payments</span>
                         <span class="fs-6 fw-bold text-success" id="bottomPaymentsTotal">0.00</span>
@@ -874,10 +932,14 @@
 
                 {{-- ACTION BUTTONS ROW --}}
                 <div class="d-flex flex-wrap gap-2 justify-content-center py-2 px-3 mt-2 border-top bg-white rounded-3 shadow-sm">
+                    @if (!isset($fromOrder) || !$fromOrder)
                     <button type="button" class="btn btn-outline-primary btn-sm px-3 fw-bold" id="btnSave"><i class="fas fa-bookmark me-1"></i>Booking</button>
+                    @endif
                     <button type="button" class="btn btn-primary btn-sm px-4 fw-bold" id="btnPosted" disabled><i class="fas fa-shopping-cart me-1"></i>Sale</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnPrint"><i class="fas fa-print me-1"></i>A4 Print</button>
+                    @if (!isset($fromOrder) || !$fromOrder)
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnEstimate"><i class="fas fa-file-invoice me-1"></i>Estimate</button>
+                    @endif
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnPrint2"><i class="fas fa-receipt me-1"></i>Thermal Print</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnDcThermal"><i class="fas fa-truck me-1"></i>DC</button>
                 </div>
@@ -1381,6 +1443,96 @@
                     }
                 });
             });
+            // Auto-load Customer Order into Sale form for delivery
+            @if (isset($fromOrder) && $fromOrder)
+                (function() {
+                    // 1. Setup Customer
+                    @if ($fromOrder->customer_id && $fromOrder->customer)
+                        $('#walkinToggle').prop('checked', false).trigger('change');
+                        let orderCustOpt = new Option(
+                            "{{ addslashes($fromOrder->customer->customer_id . ' — ' . $fromOrder->customer->customer_name) }}",
+                            "{{ $fromOrder->customer_id }}",
+                            true,
+                            true
+                        );
+                        $('#customerSelect').append(orderCustOpt).trigger('change');
+                        $.get("{{ url('sale/customers') }}/{{ $fromOrder->customer_id }}?t=" + new Date().getTime(), function(d) {
+                            $('#address').val(d.address || '');
+                            $('#tel').val(d.mobile || '');
+                            const prev = parseFloat(d.previous_balance || 0);
+                            const range = parseFloat(d.balance_range || 0);
+                            $('#previousBalance').val(prev.toFixed(2));
+                            $('#rangeBalance').val(range.toFixed(2));
+
+                            $('#ci_code').text(d.customer_id || '—');
+                            $('#ci_name').text(d.customer_name || '—');
+                            $('#ci_mobile').text(d.mobile || '—');
+                            $('#ci_address').text(d.address || '—');
+                            $('#ci_prev_bal').text(prev.toFixed(2));
+                            $('#ci_range_bal').text(range.toFixed(2));
+                            $('#customerInfoCard').removeClass('d-none');
+                            if (typeof updateGrandTotals === 'function') updateGrandTotals();
+                        });
+                    @else
+                        $('#walkinToggle').prop('checked', true).trigger('change');
+                        $('#walkinNameInput').val("{{ addslashes($fromOrder->walkin_name ?: 'Walk-in Customer') }}");
+                    @endif
+
+                    // 2. Populate Order Items
+                    const orderItemsList = @json($fromOrder->items);
+                    if (orderItemsList && orderItemsList.length > 0) {
+                        $('#salesTableBody').empty();
+                        orderItemsList.forEach(function(item) {
+                            addNewRow();
+                            const $row = $('#salesTableBody tr:last-child');
+                            
+                            let pid = item.product_id;
+                            let pName = item.item_name;
+                            let unitPrice = parseFloat(item.price) || 0;
+                            let qty = parseFloat(item.qty) || 1;
+
+                            if (pid) {
+                                $row.find('.product-id-hidden').val(pid);
+                                let pOpt = new Option(pName, pid, true, true);
+                                $row.find('.product').append(pOpt);
+                                if (typeof loadWarehousesForProduct === 'function') {
+                                    loadWarehousesForProduct($row, pid);
+                                }
+                            } else {
+                                $row.find('.product-id-hidden').val('');
+                                let pOpt = new Option(pName, 'custom', true, true);
+                                $row.find('.product').append(pOpt);
+                                $row.find('.is-manual').val('1');
+                                $row.find('.manual-cost-price').val(unitPrice);
+                            }
+
+                            $row.find('.carton-qty').val(qty);
+                            $row.find('.total-pieces').val(qty);
+                            $row.find('.sales-qty').val(qty);
+                            $row.find('.visible-price').val(unitPrice);
+                            $row.find('.price-per-piece').val(unitPrice);
+                            $row.find('.retail-price').val(unitPrice);
+                            $row.find('.pack-qty').val(1);
+                            
+                            if (typeof computeRow === 'function') {
+                                computeRow($row);
+                            }
+                        });
+
+                        @if ($fromOrder->discount > 0)
+                            $('#walkinDiscountRs').val("{{ $fromOrder->discount }}");
+                        @endif
+
+                        setTimeout(function() {
+                            if (typeof recomputeReceipts === 'function') {
+                                recomputeReceipts();
+                            } else if (typeof updateGrandTotals === 'function') {
+                                updateGrandTotals();
+                            }
+                        }, 120);
+                    }
+                })();
+            @endif
         });
     </script>
 

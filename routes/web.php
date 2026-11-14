@@ -285,6 +285,23 @@ Route::middleware('auth')->group(function () {
     Route::post('/purchase/quick', [PurchaseController::class, 'quickStore'])->middleware('permission:purchases.create')->name('purchase.quick_store');
     Route::get('/purchase/quick-search-products', [PurchaseController::class, 'quickSearchProducts'])->middleware('permission:purchases.create')->name('purchase.quick_search_products');
     
+    // Raw Materials Routes (Purchase & Inventory)
+    Route::get('/raw-materials', [\App\Http\Controllers\RawMaterialController::class, 'index'])->name('raw_materials.index');
+    Route::get('/raw-materials/create', [\App\Http\Controllers\RawMaterialController::class, 'create'])->name('raw_materials.create');
+    Route::post('/raw-materials', [\App\Http\Controllers\RawMaterialController::class, 'store'])->name('raw_materials.store');
+    Route::get('/raw-materials/{id}/edit', [\App\Http\Controllers\RawMaterialController::class, 'edit'])->name('raw_materials.edit');
+    Route::put('/raw-materials/{id}', [\App\Http\Controllers\RawMaterialController::class, 'update'])->name('raw_materials.update');
+    Route::delete('/raw-materials/{id}', [\App\Http\Controllers\RawMaterialController::class, 'destroy'])->name('raw_materials.destroy');
+    Route::post('/raw-materials/{id}/toggle-active', [\App\Http\Controllers\RawMaterialController::class, 'toggleActive'])->name('raw_materials.toggle_active');
+    Route::get('/raw-materials/ajax-search', [\App\Http\Controllers\RawMaterialController::class, 'ajaxSearch'])->name('raw_materials.ajax_search');
+    
+    // Raw Material Categories Routes
+    Route::get('/raw-material-categories', [\App\Http\Controllers\RawMaterialCategoryController::class, 'index'])->name('raw_material_categories.index');
+    Route::post('/raw-material-categories', [\App\Http\Controllers\RawMaterialCategoryController::class, 'store'])->name('raw_material_categories.store');
+    Route::put('/raw-material-categories/{id}', [\App\Http\Controllers\RawMaterialCategoryController::class, 'update'])->name('raw_material_categories.update');
+    Route::delete('/raw-material-categories/{id}', [\App\Http\Controllers\RawMaterialCategoryController::class, 'destroy'])->name('raw_material_categories.destroy');
+    Route::get('/raw-material-categories/ajax-list', [\App\Http\Controllers\RawMaterialCategoryController::class, 'getCategoriesJson'])->name('raw_material_categories.ajax_list');
+    
     // Purchase POS Routes
     Route::get('/purchase-pos', [App\Http\Controllers\PurchasePOSController::class, 'index'])->middleware('permission:purchase_pos.create')->name('purchase-pos.index');
     Route::post('/purchase-pos/store', [App\Http\Controllers\PurchasePOSController::class, 'store'])->middleware('permission:purchase_pos.create')->name('purchase-pos.store');
@@ -368,6 +385,7 @@ Route::middleware('auth')->group(function () {
     Route::post('bookings/store', [ProductBookingController::class, 'store'])->middleware('permission:bookings.create')->name('bookings.store');
     Route::get('booking/receipt/{id}', [ProductBookingController::class, 'receipt'])->middleware('permission:bookings.view')->name('booking.receipt');
     Route::get('/sales/from-booking/{id}', [SaleController::class, 'convertFromBooking'])->name('sales.from.booking');
+    Route::get('/sales/from-order/{id}', [SaleController::class, 'convertFromOrder'])->name('sales.from.order');
     Route::post('/sales/{id}/confirm', [SaleController::class, 'confirmBooking'])->middleware('permission:sales.create')->name('sales.confirm');
 
     // Customer Orders (Isolated order taking module - does not alter stock or ledger)
@@ -377,6 +395,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/customer-orders/{id}', [CustomerOrderController::class, 'show'])->name('customer_orders.show');
     Route::get('/customer-orders/{id}/edit', [CustomerOrderController::class, 'edit'])->name('customer_orders.edit');
     Route::get('/customer-orders/{id}/prepare', [CustomerOrderController::class, 'prepare'])->name('customer_orders.prepare');
+    Route::get('/customer-orders/{id}/deliver', [CustomerOrderController::class, 'deliver'])->name('customer_orders.deliver');
+    Route::post('/customer-orders/{id}/deliver', [CustomerOrderController::class, 'processDelivery'])->name('customer_orders.process_delivery');
     Route::put('/customer-orders/{id}', [CustomerOrderController::class, 'update'])->name('customer_orders.update');
     Route::post('/customer-orders/{id}/status', [CustomerOrderController::class, 'updateStatus'])->name('customer_orders.status');
     Route::get('/customer-orders/{id}/print', [CustomerOrderController::class, 'print'])->name('customer_orders.print');

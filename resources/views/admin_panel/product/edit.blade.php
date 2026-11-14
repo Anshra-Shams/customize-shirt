@@ -320,10 +320,8 @@
                                                         <th class="text-uppercase text-muted p-1 text-center conv-col" id="convFactorHeader" style="width: 110px; font-size: 11px;">Pcs / Carton</th>
                                                         <th class="text-uppercase text-muted p-1 text-center piece-wt-only-col" style="width: 110px; font-size: 11px;">Piece Wt (g)</th>
                                                         <th class="text-uppercase text-muted p-1" style="width: 110px; font-size: 11px;">Sale Price</th>
-                                                        <th class="text-uppercase text-muted p-1 text-center" style="width: 130px; font-size: 11px;">Materials</th>
-                                                        <th class="text-uppercase text-muted p-1" style="width: 110px; font-size: 11px;">Purch Price</th>
-                                                        <th class="text-uppercase text-muted p-1" style="width: 120px; font-size: 11px;">Profit</th>
                                                         <th class="text-uppercase text-muted p-1" style="width: 110px; font-size: 11px;">Wholesale</th>
+                                                        <th class="text-uppercase text-muted p-1" style="width: 110px; font-size: 11px;">Purch Price</th>
                                                         <th class="text-uppercase text-muted p-1" style="width: 70px; font-size: 11px;">Alert</th>
                                                         <th class="text-uppercase text-muted p-1" style="width: 120px; font-size: 11px;">Barcode</th>
                                                         <th class="text-uppercase text-muted p-1 text-center" style="width: 60px; font-size: 11px;">Action</th>
@@ -549,8 +547,6 @@
                 </div>
             </div>
         </div>
-
-        @include('admin_panel.product.partials.variant_materials_modal')
 
     </div>
 @endsection
@@ -954,7 +950,6 @@
                 const purchVal = v ? (v.purch_price || '') : '';
                 const alertVal = v ? (v.alert || 0) : '0';
                 const barcodeVal = v ? (v.barcode || '') : generateRandomBarcode();
-                const materialsVal = (v && Array.isArray(v.materials)) ? v.materials : [];
                 
                 tr.innerHTML = `
                     <td class="p-1 align-middle">
@@ -991,10 +986,8 @@
                         </div>
                     </td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-sale-input" name="variant_sale_price[]" step="any" value="${saleVal}" placeholder="0.00" required></td>
-                    ${window.VariantMaterialsManager ? window.VariantMaterialsManager.buildMaterialsCellHtml(materialsVal) : ''}
-                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-purch-input" name="variant_purchase_price[]" step="any" value="${purchVal}" placeholder="0.00" required></td>
-                    ${window.VariantMaterialsManager ? window.VariantMaterialsManager.buildProfitCellHtml(materialsVal, saleVal, purchVal) : ''}
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_wholesale_price[]" step="any" value="${wholesaleVal}" placeholder="0.00"></td>
+                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-purch-input" name="variant_purchase_price[]" step="any" value="${purchVal}" placeholder="0.00" required></td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_alert_qty[]" value="${alertVal}" placeholder="0"></td>
                     <td class="p-1"><input type="text" class="form-control-pro form-control-sm" name="variant_barcode[]" value="${barcodeVal}"></td>
                     <td class="p-1 text-center text-nowrap">
@@ -1088,7 +1081,6 @@
                 });
 
                 updateVariantStocksFromBase();
-                if (window.VariantMaterialsManager) window.VariantMaterialsManager.updateAllRowsUI();
             }
 
             function addVariantRow(weightGrams = null, v = null) {
@@ -1136,7 +1128,6 @@
                 const weightVal = v ? (v.weight_per_piece || 0) : (weightGrams || (factor < 10 ? (factor * 1000).toFixed(1).replace(/\.0$/, '') : factor));
                 const alertVal = v ? (v.alert || 0) : '0';
                 const barcodeVal = v ? (v.barcode || '') : generateRandomBarcode();
-                const materialsVal = (v && Array.isArray(v.materials)) ? v.materials : [];
 
                 tr.innerHTML = `
                     <td class="p-1">
@@ -1173,10 +1164,8 @@
                         </div>
                     </td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm sale-price-input" name="variant_sale_price[]" step="any" value="${suggSale}" placeholder="0.00" required></td>
-                    ${window.VariantMaterialsManager ? window.VariantMaterialsManager.buildMaterialsCellHtml(materialsVal) : ''}
-                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm purch-price-input" name="variant_purchase_price[]" step="any" value="${suggPurch}" placeholder="0.00" required></td>
-                    ${window.VariantMaterialsManager ? window.VariantMaterialsManager.buildProfitCellHtml(materialsVal, suggSale, suggPurch) : ''}
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_wholesale_price[]" step="any" value="${suggWholesale}" placeholder="0.00"></td>
+                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm purch-price-input" name="variant_purchase_price[]" step="any" value="${suggPurch}" placeholder="0.00" required></td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_alert_qty[]" value="${alertVal}" placeholder="0"></td>
                     <td class="p-1"><input type="text" class="form-control-pro form-control-sm" name="variant_barcode[]" value="${barcodeVal}"></td>
                     <td class="p-1 text-center text-nowrap">
@@ -1320,12 +1309,6 @@
                 if(newRow.querySelector('input[name="variant_purchase_price[]"]')) newRow.querySelector('input[name="variant_purchase_price[]"]').value = sourcePurch;
                 if(newRow.querySelector('input[name="variant_alert_qty[]"]')) newRow.querySelector('input[name="variant_alert_qty[]"]').value = sourceAlert;
                 if(newRow.querySelector('input[name="variant_stock[]"]')) newRow.querySelector('input[name="variant_stock[]"]').value = sourceStock;
-
-                const sourceMaterials = sourceRow.querySelector('input[name="variant_materials[]"]')?.value || '[]';
-                if (newRow.querySelector('input[name="variant_materials[]"]')) {
-                    newRow.querySelector('input[name="variant_materials[]"]').value = sourceMaterials;
-                }
-                if (window.VariantMaterialsManager) window.VariantMaterialsManager.updateRowUI(newRow);
                 
                 const vid = newRow.dataset.vid;
                 manualPrices[vid + '_sale'] = true;
@@ -1373,9 +1356,6 @@
                         row.querySelectorAll('input:not([type="hidden"])').forEach(inp => inp.value = '');
                         const bc = row.querySelector('input[name="variant_barcode[]"]');
                         if (bc) bc.value = generateRandomBarcode();
-                        const matInp = row.querySelector('input[name="variant_materials[]"]');
-                        if (matInp) matInp.value = '[]';
-                        if (window.VariantMaterialsManager) window.VariantMaterialsManager.updateRowUI(row);
                     }
                     calculateOverallStock();
                 } else if (genBtn) {
@@ -1466,10 +1446,6 @@
             const alertVal   = tr.querySelector('[name="variant_alert_qty[]"]')?.value || '0';
             const barcodeVal = tr.querySelector('[name="variant_barcode[]"]')?.value || '';
             const stockReadonly = stockInp?.hasAttribute('readonly') ? 'readonly' : '';
-            const matMetrics = window.VariantMaterialsManager ? window.VariantMaterialsManager.getRowMetrics(tr) : { count: 0, totalCost: 0, profit: 0, pct: 0 };
-            const matCostText = window.VariantMaterialsManager ? window.VariantMaterialsManager.formatRs(matMetrics.totalCost) : 'Rs 0';
-            const matProfitText = window.VariantMaterialsManager ? `${window.VariantMaterialsManager.formatRs(matMetrics.profit)} (${matMetrics.pct}%)` : 'Rs 0 (0%)';
-            const matProfitColor = matMetrics.profit > 0 ? '#15803d' : (matMetrics.profit < 0 ? '#dc2626' : '#64748b');
 
             const isWeightMode = variantMode === 'weight';
 
@@ -1569,16 +1545,6 @@
                             <input type="number" class="mob-input mob-sync" data-field="variant_wholesale_price[]" value="${wsaleVal}" placeholder="0.00" step="any">
                         </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;margin-bottom:8px;">
-                        <button type="button" class="mat-trigger-btn mob-mat-btn">
-                            ${window.VariantMaterialsManager ? window.VariantMaterialsManager.flaskSvg : ''}
-                            <span>Materials (<span class="mob-mat-count">${matMetrics.count}</span>)</span>
-                        </button>
-                        <div style="font-size:12px;">
-                            <div class="mob-label" style="margin-bottom:0;">Profit</div>
-                            <div class="mob-profit-display" style="font-weight:700;color:${matProfitColor};">${matProfitText}</div>
-                        </div>
-                    </div>
                     <div class="mob-field-group">
                         <div class="mob-label">Purchase Price <span class="req">*</span></div>
                         <input type="number" class="mob-input mob-sync" data-field="variant_purchase_price[]" value="${purchVal}" placeholder="0.00" step="any" required>
@@ -1604,15 +1570,6 @@
             card.querySelectorAll('.mob-sync').forEach(inp => {
                 inp.addEventListener('input', () => mobSyncToDesktop(card, idx));
             });
-            const mobMatBtn = card.querySelector('.mob-mat-btn');
-            if (mobMatBtn) {
-                mobMatBtn.addEventListener('click', () => {
-                    const targetRow = variantsBody.children[idx];
-                    if (targetRow && window.VariantMaterialsManager) {
-                        window.VariantMaterialsManager.openForRow(targetRow);
-                    }
-                });
-            }
             card.querySelectorAll('.mob-sync').forEach(sel => {
                 if (sel.tagName === 'SELECT') sel.addEventListener('change', () => mobSyncToDesktop(card, idx));
             });
@@ -1680,7 +1637,6 @@
             if (typeof updateVariantStocksFromBase === 'function') {
                 updateVariantStocksFromBase();
             }
-            if (window.VariantMaterialsManager) window.VariantMaterialsManager.updateRowUI(tr);
         }
 
         // ---- Toggle accordion (one open at a time) ----

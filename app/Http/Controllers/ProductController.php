@@ -101,8 +101,8 @@ class ProductController extends Controller
         $term = $request->get('term') ?? $request->get('q') ?? '';
 
         $query = Product::query()
-            ->select('id', 'item_name', 'item_code', 'barcode_path', 'size_mode', 'unit_id', 'height', 'width', 'pieces_per_box', 'purchase_price_per_box', 'purchase_price_per_m2', 'purchase_price_per_piece', 'pieces_per_m2', 'purchase_discount_percent', 'sale_discount_percent', 'color', 'sale_price_per_piece')
-            ->with(['unit'])
+            ->select('id', 'item_name', 'item_code', 'category_id', 'barcode_path', 'size_mode', 'unit_id', 'height', 'width', 'pieces_per_box', 'purchase_price_per_box', 'purchase_price_per_m2', 'purchase_price_per_piece', 'pieces_per_m2', 'purchase_discount_percent', 'sale_discount_percent', 'color', 'sale_price_per_piece', 'is_raw_material', 'is_part')
+            ->with(['unit', 'category_relation'])
             ->withSum('warehouseStocks', 'total_pieces') /* Sum PIECES, not boxes */
             ->where('is_active', true) /* Only active products */
             ->where(function ($q) use ($term) {
@@ -111,6 +111,18 @@ class ProductController extends Controller
                     ->orWhere('barcode_path', 'like', "%{$term}%")
                     ->orWhere('color', 'like', "%{$term}%");
             });
+
+        if ($request->boolean('raw_materials_only') || $request->get('raw_materials_only') == '1') {
+            $query->where(function($q) {
+                $q->where('is_raw_material', 1)->orWhere('is_part', 1);
+            });
+        }
+
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->get('category_id'));
+        }
+
+        $query->orderByRaw('CASE WHEN is_raw_material = 1 OR is_part = 1 THEN 0 ELSE 1 END');
 
         $products = $query->paginate(10); // Lazy loading (10 per request)
 
@@ -340,13 +352,19 @@ class ProductController extends Controller
                 return $expanded;
             }
 
+            $isRaw = (bool) ($p->is_raw_material || $p->is_part);
+            $rawBadge = $isRaw ? ' [Raw Material]' : '';
+
             return [[
                 'id' => $p->id,
-                'text' => $p->item_name." (SKU: {$p->item_code})",
+                'text' => $p->item_name . $rawBadge . " (SKU: {$p->item_code})",
                 'sku' => $p->item_code ?? '',
+                'category_id' => $p->category_id,
+                'category_name' => $p->category_relation->name ?? '',
                 'stock' => $stockDisplay,
                 'stock_pieces' => $stockPieces,
                 'name' => $p->item_name,
+                'is_raw_material' => $isRaw,
                 'size_mode' => $p->size_mode,
                 'unit_name' => $unitName,
                 'pieces_per_box' => $ppb,
@@ -376,6 +394,14 @@ class ProductController extends Controller
         $products = Product::with('category_relation', 'sub_category_relation', 'brand')
             ->withSum('warehouseStocks', 'total_pieces')
             ->where('is_active', true) /* Only active products */
+            ->when($request->boolean('raw_materials_only') || $request->get('raw_materials_only') == '1', function ($q) {
+                $q->where(function ($sub) {
+                    $sub->where('is_raw_material', 1)->orWhere('is_part', 1);
+                });
+            })
+            ->when($request->filled('category_id') && $request->get('category_id') !== 'all', function ($q) use ($request) {
+                $q->where('category_id', $request->get('category_id'));
+            })
             ->when($term, function ($query) use ($term) {
                 $query->where('item_name', 'like', "%{$term}%")
                     ->orWhere('item_code', 'like', "%{$term}%")
@@ -451,6 +477,14 @@ class ProductController extends Controller
 
         if ($request->filled('status')) {
             $query->where('is_active', $request->status === 'active' ? 1 : 0);
+        }
+
+        if ($request->filled('type')) {
+            if ($request->type === 'raw_material') {
+                $query->where(fn($q) => $q->where('is_raw_material', 1)->orWhere('is_part', 1));
+            } elseif ($request->type === 'finished') {
+                $query->where('is_raw_material', 0)->where('is_part', 0);
+            }
         }
 
         $products   = $query->latest()->paginate(20)->withQueryString();
@@ -749,46 +783,7 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * Parse and sanitize per-variant materials/services JSON and calculate cost & profit metrics.
-     */
-    private function parseVariantMaterials($rawJson, $salePrice): array
-    {
-        $decoded = is_string($rawJson) ? json_decode($rawJson, true) : (is_array($rawJson) ? $rawJson : []);
-        $clean = [];
-        $totalCost = 0.0;
-
-        if (is_array($decoded)) {
-            foreach ($decoded as $item) {
-                if (! is_array($item)) {
-                    continue;
-                }
-                $mName = trim((string) ($item['name'] ?? ''));
-                $mAmt = is_numeric($item['amount'] ?? null) ? round((float) $item['amount'], 2) : 0.0;
-                if ($mName === '' && $mAmt == 0.0) {
-                    continue;
-                }
-                $clean[] = [
-                    'name' => $mName,
-                    'amount' => $mAmt,
-                ];
-                $totalCost += $mAmt;
-            }
-        }
-
-        $sale = is_numeric($salePrice) ? (float) $salePrice : 0.0;
-        $totalCost = round($totalCost, 2);
-        $profit = round($sale - $totalCost, 2);
-        $profitPct = $sale > 0 ? (int) round(($profit / $sale) * 100) : 0;
-
-        return [
-            'materials' => $clean,
-            'material_cost' => $totalCost,
-            'material_profit' => $profit,
-            'material_profit_pct' => $profitPct,
-        ];
-    }
-
+    // ===== Store product =====
     // ===== Store product =====
     public function store_product(Request $request)
     {
@@ -940,7 +935,6 @@ class ProductController extends Controller
                 $conv_factors = $request->variant_conv_factor;
                 $is_bases = $request->variant_is_base;
                 $units = $request->variant_unit;
-                $materials_raw = $request->input('variant_materials', []);
 
                 // Validate Conv Factors if Weight Unit is selected
                 if (in_array($mode, ['by_kg', 'by_gm', 'by_ton'])) {
@@ -1003,8 +997,6 @@ class ProductController extends Controller
                             $variantStockSum += $vStock;
                         }
 
-                        $matMeta = $this->parseVariantMaterials($materials_raw[$i] ?? null, $sale_prices[$i] ?? 0);
-
                         $variants[] = [
                             'name' => $names[$i],
                             'size' => $sizes[$i] ?? '-',
@@ -1019,10 +1011,6 @@ class ProductController extends Controller
                             'conv_factor' => $vConvFactor,
                             'is_base_variant' => $is_bases[$i] ?? 0,
                             'unit' => $units[$i] ?? 'Pcs',
-                            'materials' => $matMeta['materials'],
-                            'material_cost' => $matMeta['material_cost'],
-                            'material_profit' => $matMeta['material_profit'],
-                            'material_profit_pct' => $matMeta['material_profit_pct'],
                         ];
                     }
                 }
@@ -1291,7 +1279,6 @@ class ProductController extends Controller
                 $conv_factors = $request->variant_conv_factor;
                 $is_bases = $request->variant_is_base;
                 $units = $request->variant_unit;
-                $materials_raw = $request->input('variant_materials', []);
 
                 // Validate Conv Factors if Weight Unit is selected
                 if (in_array($mode, ['by_kg', 'by_gm', 'by_ton'])) {
@@ -1422,8 +1409,6 @@ class ProductController extends Controller
                             $savedInitial = $stocks[$i] ?? 0;
                         }
 
-                        $matMeta = $this->parseVariantMaterials($materials_raw[$i] ?? null, $sale_prices[$i] ?? 0);
-
                         $variants[] = [
                             'name' => $vName,
                             'size' => $vSize,
@@ -1439,10 +1424,6 @@ class ProductController extends Controller
                             'conv_factor' => $vConvFactor,
                             'is_base_variant' => $is_bases[$i] ?? 0,
                             'unit' => $vUnit,
-                            'materials' => $matMeta['materials'],
-                            'material_cost' => $matMeta['material_cost'],
-                            'material_profit' => $matMeta['material_profit'],
-                            'material_profit_pct' => $matMeta['material_profit_pct'],
                         ];
                     }
                 }

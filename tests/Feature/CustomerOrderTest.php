@@ -16,17 +16,27 @@ class CustomerOrderTest extends TestCase
 
     protected function makeAdminUser(): User
     {
-        $user = User::where('usertype', 'admin')->first();
-        if ($user) {
-            return $user;
+        $user = User::where('email', 'test_super_order_admin@example.com')->first();
+        if (!$user) {
+            $user = User::create([
+                'name' => 'Test Admin',
+                'email' => 'test_super_order_admin@example.com',
+                'password' => bcrypt('password'),
+                'usertype' => 'admin',
+            ]);
         }
 
-        return User::create([
-            'name' => 'Test Admin',
-            'email' => 'test_order_admin_' . uniqid() . '@example.com',
-            'password' => bcrypt('password'),
-            'usertype' => 'admin',
-        ]);
+        $perm = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'sales.create']);
+        if (!$user->hasPermissionTo('sales.create')) {
+            $user->givePermissionTo($perm);
+        }
+
+        $perm = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'dashboard.view']);
+        if (!$user->hasPermissionTo('dashboard.view')) {
+            $user->givePermissionTo($perm);
+        }
+
+        return $user;
     }
 
     public function test_guest_is_redirected_from_customer_orders(): void
@@ -110,10 +120,10 @@ class CustomerOrderTest extends TestCase
         $this->assertEquals(500.00, (float) $order->advance_amount);
         $this->assertCount(2, $order->items);
 
-        // Ensure ZERO impact on sales, stock movements, and accounting journal entries
+        // Ensure ZERO impact on sales and stock movements, and advance posts balanced journal entries
         $this->assertEquals($salesBefore, DB::table('sales')->count());
         $this->assertEquals($movementsBefore, DB::table('stock_movements')->count());
-        $this->assertEquals($journalBefore, DB::table('journal_entries')->count());
+        $this->assertEquals($journalBefore + 2, DB::table('journal_entries')->count());
 
         // Verify show, edit, print, status update, full update, and delete
         $this->actingAs($user)
@@ -207,19 +217,18 @@ class CustomerOrderTest extends TestCase
             'color' => $originalColorJson,
         ]);
 
-        $customer = Customer::first() ?? Customer::create([
+        $customer = Customer::create([
+            'customer_id' => 'CUST-MAT-' . uniqid(),
             'customer_name' => 'Mat Test Customer',
             'mobile' => '03009998888',
             'opening_balance' => 0,
         ]);
 
-        // Create page renders Materials button column, modal, and catalog product data-materials
+        // Create page renders clean items grid without materials column or modal
         $this->actingAs($user)
             ->get(route('customer_orders.create'))
             ->assertStatus(200)
-            ->assertSee('Materials')
-            ->assertSee('orderMaterialsModal')
-            ->assertSee('Fabric');
+            ->assertDontSee('orderMaterialsModal');
 
         // Submit order with catalog materials + added custom order-only material
         $submittedMaterials = [
@@ -274,7 +283,7 @@ class CustomerOrderTest extends TestCase
         $this->actingAs($user)
             ->get(route('customer_orders.edit', $order->id))
             ->assertStatus(200)
-            ->assertSee('Extra Golden Lace');
+            ->assertDontSee('orderMaterialsModal');
 
         // Customer orders index uses "In Preparing" and links to confirmation page
         $prepareUrl = route('customer_orders.prepare', $order->id);
@@ -284,13 +293,17 @@ class CustomerOrderTest extends TestCase
             ->assertSee('In Preparing')
             ->assertSee($prepareUrl);
 
-        // Confirmation page renders order form pre-set for "In Preparing"
+        // Confirmation page renders order form pre-set for "In Preparing" with Materials button and modal (without the blue scope note)
         $this->actingAs($user)
             ->get($prepareUrl)
             ->assertStatus(200)
             ->assertSee('Confirm Order Preparation #' . $order->order_no)
             ->assertSee('Confirm In Preparing')
-            ->assertSee('Extra Golden Lace');
+            ->assertSee('orderMaterialsModal')
+            ->assertSee('Materials')
+            ->assertSee('Raw Material / Service')
+            ->assertSee('rawMaterialCategories')
+            ->assertDontSee('Changes made here are saved only for this customer order');
 
         // Confirming preparation updates status to in_progress and redirects to index
         $this->actingAs($user)
@@ -330,13 +343,14 @@ class CustomerOrderTest extends TestCase
             ]);
         }
 
-        $customer = Customer::first() ?? Customer::create([
+        $customer = Customer::create([
+            'customer_id' => 'CUST-PAY-' . uniqid(),
             'customer_name' => 'Pay Test Customer',
             'mobile' => '03007776666',
             'opening_balance' => 0,
         ]);
 
-        // Create page renders Advance Paid, Remaining Balance & Payment Methods
+        // Create page renders Advance Paid, Remaining Balance, Payment Methods
         $this->actingAs($user)
             ->get(route('customer_orders.create'))
             ->assertStatus(200)
@@ -370,7 +384,6 @@ class CustomerOrderTest extends TestCase
             route('customer_orders.edit', $order->id),
             route('customer_orders.prepare', $order->id),
             route('customer_orders.show', $order->id),
-            route('customer_orders.print', $order->id),
         ] as $url) {
             $this->actingAs($user)
                 ->get($url)
@@ -380,6 +393,15 @@ class CustomerOrderTest extends TestCase
                 ->assertSee('Payment Methods')
                 ->assertSee($account->title);
         }
+
+        // Print slip displays financial totals (Advance Paid, Remaining Balance) but hides internal bank account titles
+        $this->actingAs($user)
+            ->get(route('customer_orders.print', $order->id))
+            ->assertStatus(200)
+            ->assertSee('Advance Paid')
+            ->assertSee('Remaining Balance')
+            ->assertDontSee('Advance Payment Methods:')
+            ->assertDontSee($account->title);
     }
 
     public function test_order_advance_posts_updates_and_reverses_in_account_ledger(): void
@@ -397,7 +419,8 @@ class CustomerOrderTest extends TestCase
             'status' => 1,
         ]);
 
-        $customer = Customer::first() ?? Customer::create([
+        $customer = Customer::create([
+            'customer_id' => 'CUST-LEDG-' . uniqid(),
             'customer_name' => 'Ledger Advance Customer',
             'mobile' => '03005554433',
             'opening_balance' => 0,
@@ -480,5 +503,202 @@ class CustomerOrderTest extends TestCase
         // Ensure Sales & Stock remain completely untouched
         $this->assertEquals($salesBefore, DB::table('sales')->count());
         $this->assertEquals($movementsBefore, DB::table('stock_movements')->count());
+    }
+
+    public function test_can_view_delivery_page_and_process_delivery_with_settlement(): void
+    {
+        $user = $this->makeAdminUser();
+
+        $head = \App\Models\AccountHead::first() ?? \App\Models\AccountHead::create(['name' => 'Cash']);
+        $account = \App\Models\Account::create([
+            'head_id' => $head->id,
+            'account_code' => 'DELIV-CASH-' . uniqid(),
+            'title' => 'Delivery Cash Counter',
+            'type' => 'Debit',
+            'opening_balance' => 0.00,
+            'current_balance' => 0.00,
+            'status' => 1,
+        ]);
+
+        $customer = Customer::first() ?? Customer::create([
+            'customer_id' => 'CUST-DELIV-' . uniqid(),
+            'customer_name' => 'Delivery Client',
+            'mobile' => '03331122334',
+            'opening_balance' => 0,
+        ]);
+
+        $orderNo = 'ORD-DELIV-' . uniqid();
+        $this->actingAs($user)->post(route('customer_orders.store'), [
+            'order_no' => $orderNo,
+            'customer_mode' => 'existing',
+            'customer_id' => $customer->id,
+            'order_date' => '2026-11-12',
+            'delivery_date' => '2026-11-15',
+            'status' => 'ready',
+            'description' => 'Ready for customer collection',
+            'discount' => 200,
+            'advance_amount' => 1000,
+            'payment_account_id' => [$account->id],
+            'payment_amount' => [1000],
+            'item_name' => ['Executive 3-Piece Suit'],
+            'item_description' => ['Charcoal Grey, Italian Cut'],
+            'qty' => [1],
+            'unit' => ['Pcs'],
+            'price' => [5000],
+        ])->assertRedirect(route('customer_orders.index'));
+
+        $order = CustomerOrder::where('order_no', $orderNo)->firstOrFail();
+        // Total = 5000 - 200 = 4800. Advance = 1000. Remaining = 3800.
+        $this->assertEquals(4800.00, (float) $order->total_amount);
+        $this->assertEquals(1000.00, (float) $order->advance_amount);
+        $this->assertEquals(3800.00, $order->remaining_balance);
+
+        // 1. Visit the deliver route which redirects to sales.from.order
+        $deliverUrl = route('customer_orders.deliver', $order->id);
+        $fromOrderUrl = route('sales.from.order', $order->id);
+
+        $this->actingAs($user)
+            ->get($deliverUrl)
+            ->assertRedirect($fromOrderUrl);
+
+        // 2. Visiting the Sale Delivery page loads the prefilled sale view with order details
+        $this->actingAs($user)
+            ->get($fromOrderUrl)
+            ->assertStatus(200)
+            ->assertSee('Delivering Customer Order #' . $orderNo)
+            ->assertSee('Executive 3-Piece Suit')
+            ->assertSee('3,800.00');
+
+        // Also verify the deliver link appears in index and show
+        $this->actingAs($user)
+            ->get(route('customer_orders.index'))
+            ->assertStatus(200)
+            ->assertSee($fromOrderUrl);
+
+        $this->actingAs($user)
+            ->get(route('customer_orders.show', $order->id))
+            ->assertStatus(200)
+            ->assertSee($fromOrderUrl)
+            ->assertSee('Deliver Order');
+
+        // 3. Complete delivery by generating/processing sale linked to this order
+        $sale = \App\Models\Sale::create([
+            'invoice_no' => 'INV-DELIV-' . uniqid(),
+            'order_type' => 'counter_sale',
+            'customer_id' => $customer->id,
+            'total_bill_amount' => 4800,
+            'total_net' => 4800,
+            'cash' => 3800,
+            'status' => 'completed',
+        ]);
+
+        $order->status = 'delivered';
+        $order->delivered_at = now();
+        $order->delivered_by = $user->id;
+        $order->received_by = 'Ali Raza (Brother)';
+        $order->delivery_notes = 'Delivered via Sale Screen. Invoice #' . $sale->id;
+        $order->delivery_payment_amount = 3800;
+        $order->sale_id = $sale->id;
+        $order->save();
+
+        $order->refresh();
+        $this->assertEquals('delivered', $order->status);
+        $this->assertTrue($order->is_delivered);
+        $this->assertEquals($sale->id, $order->sale_id);
+        $this->assertEquals($sale->id, $order->sale->id);
+        $this->assertEquals('Ali Raza (Brother)', $order->received_by);
+
+        // 4. Verify show page renders completed delivery information and invoice link
+        $invoiceUrl = route('sales.invoice', $sale->id);
+        $this->actingAs($user)
+            ->get(route('customer_orders.show', $order->id))
+            ->assertStatus(200)
+            ->assertSee('Ali Raza (Brother)')
+            ->assertSee('View Sale Invoice')
+            ->assertSee($invoiceUrl);
+    }
+
+    public function test_delivering_order_via_pos_sale_bypasses_insufficient_stock_error(): void
+    {
+        $user = $this->makeAdminUser();
+        $customer = Customer::create([
+            'customer_id' => 'CUST-DELIV-' . uniqid(),
+            'customer_name' => 'Delivery Test Customer',
+            'mobile' => '03001234567',
+            'opening_balance' => 0,
+        ]);
+
+        $account = \App\Models\Account::where('status', 1)->first();
+        if (! $account) {
+            $head = \App\Models\AccountHead::firstOrCreate(['name' => 'Cash']);
+            $account = \App\Models\Account::create([
+                'head_id' => $head->id,
+                'title' => 'Cash Counter',
+                'status' => 1,
+                'opening_balance' => 0,
+            ]);
+        }
+
+        $warehouse = \App\Models\Warehouse::first() ?: \App\Models\Warehouse::create(['warehouse_name' => 'Main Store']);
+
+        $product = Product::create([
+            'item_name' => 'Custom Blazer ' . uniqid(),
+            'is_active' => true,
+            'is_raw_material' => 0,
+            'is_part' => 0,
+        ]);
+
+        // Ensure warehouse stock for this product is 0.00
+        \App\Models\WarehouseStock::updateOrCreate(
+            ['product_id' => $product->id, 'warehouse_id' => $warehouse->id],
+            ['quantity' => 0, 'total_pieces' => 0]
+        );
+
+        $order = CustomerOrder::create([
+            'order_no' => 'ORD-BLZ-' . uniqid(),
+            'customer_id' => $customer->id,
+            'order_date' => '2026-11-14',
+            'delivery_date' => '2026-11-20',
+            'status' => 'ready',
+            'total_qty' => 1,
+            'subtotal' => 3000,
+            'total_amount' => 3000,
+            'advance_amount' => 500,
+            'created_by' => $user->id,
+        ]);
+
+        $order->items()->create([
+            'product_id' => $product->id,
+            'item_name' => $product->item_name,
+            'qty' => 1,
+            'unit' => 'Pcs',
+            'price' => 3000,
+            'total' => 3000,
+        ]);
+
+        // Post delivery sale via AJAX/JSON like POS does
+        $response = $this->actingAs($user)->postJson(route('sales.store'), [
+            'action' => 'post',
+            'is_walkin' => 0,
+            'customer' => $customer->id,
+            'customer_order_id' => $order->id,
+            'reference' => 'Customer Order #' . $order->order_no,
+            'warehouse_id' => [$warehouse->id],
+            'product_id' => [$product->id],
+            'qty' => [1],
+            'total_pieces' => [1],
+            'price' => [3000],
+            'sales_amount' => [3000],
+            'receipt_account_id' => [$account->id],
+            'receipt_amount' => [2500],
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson(['ok' => true]);
+
+        $order->refresh();
+        $this->assertEquals('delivered', $order->status);
+        $this->assertNotNull($order->sale_id);
+        $this->assertEquals(2500, $order->delivery_payment_amount);
     }
 }

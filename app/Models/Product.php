@@ -72,6 +72,22 @@ class Product extends Model
         return $q->withSum('movements as available_qty', 'qty'); // sum of ledger
     }
 
+    public function scopeRawMaterials($q)
+    {
+        return $q->where(function ($query) {
+            $query->where('is_raw_material', 1)
+                  ->orWhere('is_part', 1);
+        });
+    }
+
+    public function scopeFinishedGoods($q)
+    {
+        return $q->where(function ($query) {
+            $query->where('is_raw_material', 0)
+                  ->where('is_part', 0);
+        });
+    }
+
     public function webImages()
     {
         return $this->hasMany(ProductWebImage::class)->orderBy('sort_order', 'asc');

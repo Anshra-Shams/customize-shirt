@@ -157,8 +157,10 @@ class PurchaseController extends Controller
             ? 'PUR-'.str_pad(((int) preg_replace('/[^0-9]/', '', $lastInvoice)) + 1, 3, '0', STR_PAD_LEFT)
             : 'PUR-001';
 
+        $rawMaterialCategories = \App\Models\Category::rawMaterials()->orderBy('name')->get();
+
         // Return new V2 view
-        return view('admin_panel.purchase.add_purchase_v2', compact('Vendor', 'Warehouse', 'Purchase', 'accounts', 'nextInvoice'));
+        return view('admin_panel.purchase.add_purchase_v2', compact('Vendor', 'Warehouse', 'Purchase', 'accounts', 'nextInvoice', 'rawMaterialCategories'));
     }
     public function quickCreate()
     {
@@ -168,7 +170,8 @@ class PurchaseController extends Controller
             $q->whereIn('name', ['Cash', 'Bank']);
         })->where('status', 1)->orderBy('title')->get();
         
-        $categories = \App\Models\Category::get();
+        $categories = \App\Models\Category::rawMaterials()->orderBy('name')->get();
+        $rawMaterialCategories = $categories;
 
         $balanceService = app(\App\Services\BalanceService::class);
         $apId = $balanceService->getAccountsPayableId();
@@ -179,7 +182,7 @@ class PurchaseController extends Controller
             ->pluck('balance', 'party_id')
             ->toArray();
 
-        return view('admin_panel.purchase.quick_create', compact('Vendor', 'Warehouse', 'accounts', 'categories', 'vendorBalances'));
+        return view('admin_panel.purchase.quick_create', compact('Vendor', 'Warehouse', 'accounts', 'categories', 'vendorBalances', 'rawMaterialCategories'));
     }
 
     public function quickSearchProducts(Request $request)
@@ -189,17 +192,26 @@ class PurchaseController extends Controller
             return response()->json([]);
         }
 
-        $products = Product::with(['category_relation', 'sub_category_relation'])
+        $query = Product::with(['category_relation', 'sub_category_relation'])
             ->where('is_active', true)
+            ->where(function ($q) {
+                $q->where('is_raw_material', 1)->orWhere('is_part', 1);
+            })
             ->where(function ($q) use ($term) {
                 $q->where('item_name', 'like', "%{$term}%")
                   ->orWhere('item_code', 'like', "%{$term}%")
                   ->orWhere('barcode_path', 'like', "%{$term}%");
-            })
-            ->limit(20)
-            ->get();
+            });
+
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->get('category_id'));
+        }
+
+        $products = $query->limit(20)->get();
 
         $results = $products->map(function ($p) use ($term) {
+            $isRaw = (bool) ($p->is_raw_material || $p->is_part);
+            $rawBadge = $isRaw ? ' [Raw Material]' : '';
             $variants = [];
             if ($p->color) {
                 try {
@@ -215,7 +227,8 @@ class PurchaseController extends Controller
             return [
                 'id' => $p->id,
                 'item_code' => $p->item_code,
-                'item_name' => $p->item_name,
+                'item_name' => $p->item_name . $rawBadge,
+                'is_raw_material' => $isRaw,
                 'category_id' => $p->category_id,
                 'category_name' => $p->category_relation->name ?? '',
                 'sub_category_id' => $p->sub_category_id,

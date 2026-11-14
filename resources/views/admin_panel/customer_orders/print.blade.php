@@ -197,9 +197,15 @@
                 @endif
             </div>
             <div class="info-box">
-                <div class="info-box-title">Order Schedule</div>
+                <div class="info-box-title">{{ $order->status === 'delivered' ? 'Delivery & Schedule' : 'Order Schedule' }}</div>
                 <div><strong>Order Date:</strong> {{ $order->order_date ? $order->order_date->format('d M Y') : '-' }}</div>
-                <div><strong>Delivery Date:</strong> {{ $order->delivery_date ? $order->delivery_date->format('d M Y') : 'Not Specified' }}</div>
+                <div><strong>Target Delivery:</strong> {{ $order->delivery_date ? $order->delivery_date->format('d M Y') : 'Not Specified' }}</div>
+                @if ($order->status === 'delivered' && $order->delivered_at)
+                    <div><strong>Delivered On:</strong> {{ $order->delivered_at->format('d M Y, h:i A') }}</div>
+                @endif
+                @if ($order->received_by)
+                    <div><strong>Received By:</strong> {{ $order->received_by }}</div>
+                @endif
                 @if ($order->creator)
                     <div><strong>Taken By:</strong> {{ $order->creator->name }}</div>
                 @endif
@@ -264,21 +270,16 @@
                     <span>Advance Paid:</span>
                     <strong>Rs {{ number_format($order->advance_amount, 2) }}</strong>
                 </div>
-                <div class="totals-row" style="color: #dc2626;">
-                    <span>Remaining Balance:</span>
-                    <strong>Rs {{ number_format(max(0, $order->total_amount - $order->advance_amount), 2) }}</strong>
-                </div>
-                @if (is_array($order->payment_methods) && count($order->payment_methods) > 0)
-                    <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 12px;">
-                        <strong style="color: #475569;">Payment Methods:</strong>
-                        @foreach ($order->payment_methods as $pm)
-                            <div class="totals-row" style="padding: 2px 0; color: #334155;">
-                                <span>{{ $pm['account_title'] ?? 'Account' }}</span>
-                                <strong>Rs {{ number_format((float) ($pm['amount'] ?? 0), 2) }}</strong>
-                            </div>
-                        @endforeach
+                @if ((float)($order->delivery_payment_amount ?? 0) > 0)
+                    <div class="totals-row" style="color: #059669;">
+                        <span>Delivery Payment:</span>
+                        <strong>Rs {{ number_format($order->delivery_payment_amount, 2) }}</strong>
                     </div>
                 @endif
+                <div class="totals-row" style="color: {{ $order->remaining_balance > 0 ? '#dc2626' : '#059669' }};">
+                    <span>{{ $order->remaining_balance > 0 ? 'Remaining Balance:' : 'Balance Settled:' }}</span>
+                    <strong>Rs {{ number_format($order->remaining_balance, 2) }}</strong>
+                </div>
             </div>
         </div>
     </div>

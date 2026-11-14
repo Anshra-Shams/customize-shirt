@@ -28,6 +28,11 @@ class Sale extends Model
         return $this->belongsTo(Product::class, 'product', 'id');
     }
 
+    public function customerOrder()
+    {
+        return $this->hasOne(CustomerOrder::class, 'sale_id');
+    }
+
     public static function generateInvoiceNo($prefix = null)
     {
         return \App\Models\InvoiceSeries::generateNextNo($prefix);
