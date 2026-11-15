@@ -49,6 +49,12 @@ class CustomerOrder extends Model
         'delivery_payment_methods' => 'array',
     ];
 
+    protected $appends = [
+        'customer_display_name',
+        'total_paid_amount',
+        'remaining_balance',
+    ];
+
     public const STATUSES = [
         'pending' => 'Pending',
         'in_progress' => 'In Preparing',

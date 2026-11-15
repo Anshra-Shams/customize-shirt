@@ -734,9 +734,10 @@ class ReportingController extends Controller
                     'sale_items.qty',
                     'sale_items.total',
                     'sale_items.color',
+                    'sale_items.purchase_price',
                     'sales.total_extradiscount',
                     'sales.total_bill_amount'
-                )->get();
+                )->whereNotIn('sales.sale_status', ['cancelled', 'returned'])->get();
 
                 // Fetch confirmed web sales
                 $webSalesQuery = DB::table('ecommerce_order_items as eoi')
@@ -767,6 +768,7 @@ class ReportingController extends Controller
                         'total_pieces' => $wItem->total_pieces,
                         'qty' => $wItem->qty,
                         'total' => $wItem->total,
+                        'purchase_price' => 0,
                         'total_extradiscount' => $wItem->total_extradiscount,
                         'total_bill_amount' => $wItem->total_bill_amount,
                         'color' => json_encode([
@@ -784,7 +786,7 @@ class ReportingController extends Controller
                 if ($start && $end) {
                     $returnQuery->whereBetween('sr.created_at', [$start, $end]);
                 }
-                $returnsList = $returnQuery->select('sri.qty', 'sri.color', 'sr.sale_id', 'sri.line_total')
+                $returnsList = $returnQuery->select('sri.qty', 'sri.color', 'sr.sale_id', 'sri.line_total', 'sri.purchase_price')
                     ->get();
 
                 $saleIds = $returnsList->pluck('sale_id')->unique()->toArray();
@@ -808,7 +810,9 @@ class ReportingController extends Controller
                     $soldQty = 0;
                     $soldQtyPieces = 0;
                     $soldAmount = 0;
+                    $soldCost = 0;
                     $isDefaultVariantFallback = count($parsedVariants) === 1 || !empty($v['is_base_variant']);
+                    $vAveragePrice = (float) ($v['purch_price'] ?? $productPurchPrice);
 
                     foreach ($salesList as $sItem) {
                         if ($this->matchSaleItemToVariant($sItem, $v, $isDefaultVariantFallback)) {
@@ -821,11 +825,17 @@ class ReportingController extends Controller
                                 $itemNet -= ($sItem->total_extradiscount * $proportion);
                             }
                             $soldAmount += $itemNet;
+
+                            $unitCost = (isset($sItem->purchase_price) && (float) $sItem->purchase_price > 0)
+                                ? (float) $sItem->purchase_price
+                                : $vAveragePrice;
+                            $soldCost += ((float) $sItem->total_pieces) * $unitCost;
                         }
                     }
 
                     $returnedQtyPieces = 0;
                     $returnedAmount = 0;
+                    $returnedCost = 0;
                     foreach ($returnsList as $rItem) {
                         $rColor = $rItem->color;
                         if (empty($rColor)) {
@@ -839,14 +849,19 @@ class ReportingController extends Controller
                         if ($this->matchSaleItemToVariant($rItemCopy, $v, $isDefaultVariantFallback)) {
                             $returnedQtyPieces += (float) $rItem->qty;
                             $returnedAmount += (float) $rItem->line_total;
+
+                            $unitCost = (isset($rItem->purchase_price) && (float) $rItem->purchase_price > 0)
+                                ? (float) $rItem->purchase_price
+                                : $vAveragePrice;
+                            $returnedCost += ((float) $rItem->qty) * $unitCost;
                         }
                     }
 
-                    $vAveragePrice = (float) ($v['purch_price'] ?? $productPurchPrice);
                     $netSoldAmount = $soldAmount - $returnedAmount;
                     $netQtyPieces = $soldQtyPieces - $returnedQtyPieces;
-                    $costOfGoodsSold = $netQtyPieces * $vAveragePrice;
+                    $costOfGoodsSold = max(0, $soldCost - $returnedCost);
                     $grossProfit = $netSoldAmount - $costOfGoodsSold;
+                    $displayAvgCost = $soldQtyPieces > 0 ? round($soldCost / $soldQtyPieces, 2) : $vAveragePrice;
 
                     if ($soldQty > 0 || $returnedQtyPieces > 0) {
                         $productStats[] = [
@@ -855,7 +870,7 @@ class ReportingController extends Controller
                             'sold_qty' => $soldQty,
                             'returned_qty' => $returnedQtyPieces,
                             'revenue' => $netSoldAmount,
-                            'avg_cost' => $vAveragePrice,
+                            'avg_cost' => $displayAvgCost,
                             'cogs' => $costOfGoodsSold,
                             'profit' => $grossProfit
                         ];
@@ -866,7 +881,8 @@ class ReportingController extends Controller
                 // Product has no variants: original logic
                 $saleQuery = DB::table('sale_items')
                     ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-                    ->where('sale_items.product_id', $product->id);
+                    ->where('sale_items.product_id', $product->id)
+                    ->whereNotIn('sales.sale_status', ['cancelled', 'returned']);
                 
                 if ($start && $end) {
                     $saleQuery->whereBetween('sales.created_at', [$start, $end]);
@@ -880,6 +896,7 @@ class ReportingController extends Controller
                     'sale_items.total_pieces',
                     'sale_items.qty',
                     'sale_items.total',
+                    'sale_items.purchase_price',
                     'sales.total_extradiscount',
                     'sales.total_bill_amount'
                 )->get();
@@ -887,6 +904,7 @@ class ReportingController extends Controller
                 $soldQty = 0;
                 $soldQtyPieces = 0;
                 $soldAmount = 0;
+                $soldCost = 0;
                 foreach ($salesList as $sItem) {
                     $soldQty += (float) $sItem->qty;
                     $soldQtyPieces += (float) $sItem->total_pieces;
@@ -897,6 +915,11 @@ class ReportingController extends Controller
                         $itemNet -= ($sItem->total_extradiscount * $proportion);
                     }
                     $soldAmount += $itemNet;
+
+                    $unitCost = (isset($sItem->purchase_price) && (float) $sItem->purchase_price > 0)
+                        ? (float) $sItem->purchase_price
+                        : $averagePrice;
+                    $soldCost += ((float) $sItem->total_pieces) * $unitCost;
                 }
                 
                 $returnQuery = DB::table('sale_return_items as sri')
@@ -906,19 +929,26 @@ class ReportingController extends Controller
                 if ($start && $end) {
                     $returnQuery->whereBetween('sr.created_at', [$start, $end]);
                 }
-                $returnsList = $returnQuery->select('sri.qty', 'sri.line_total')->get();
+                $returnsList = $returnQuery->select('sri.qty', 'sri.line_total', 'sri.purchase_price')->get();
 
                 $returnedQtyPieces = 0;
                 $returnedAmount = 0;
+                $returnedCost = 0;
                 foreach ($returnsList as $rItem) {
                     $returnedQtyPieces += (float) $rItem->qty;
                     $returnedAmount += (float) $rItem->line_total;
+
+                    $unitCost = (isset($rItem->purchase_price) && (float) $rItem->purchase_price > 0)
+                        ? (float) $rItem->purchase_price
+                        : $averagePrice;
+                    $returnedCost += ((float) $rItem->qty) * $unitCost;
                 }
 
                 $netSoldAmount = $soldAmount - $returnedAmount;
                 $netQtyPieces = $soldQtyPieces - $returnedQtyPieces;
-                $costOfGoodsSold = $netQtyPieces * $averagePrice;
+                $costOfGoodsSold = max(0, $soldCost - $returnedCost);
                 $grossProfit = $netSoldAmount - $costOfGoodsSold;
+                $displayAvgCost = $soldQtyPieces > 0 ? round($soldCost / $soldQtyPieces, 2) : $averagePrice;
 
                 if ($soldQty > 0 || $returnedQtyPieces > 0) {
                      $productStats[] = [
@@ -927,7 +957,7 @@ class ReportingController extends Controller
                         'sold_qty' => $soldQty,
                         'returned_qty' => $returnedQtyPieces,
                         'revenue' => $netSoldAmount,
-                        'avg_cost' => $averagePrice,
+                        'avg_cost' => $displayAvgCost,
                         'cogs' => $costOfGoodsSold,
                         'profit' => $grossProfit
                     ];
@@ -1066,7 +1096,7 @@ class ReportingController extends Controller
             foreach ($custSaleItems as $item) {
                 $avgPrice = 0;
                 
-                if ($item->is_manual) {
+                if ($item->is_manual || (isset($item->purchase_price) && (float)$item->purchase_price > 0)) {
                     $avgPrice = (float) $item->purchase_price;
                 } else {
                     $product = $products->firstWhere('id', $item->product_id);

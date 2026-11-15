@@ -362,8 +362,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/products/search', [ProductController::class, 'searchProducts'])->name('products.search');
     Route::get('/search-product-name', [SaleController::class, 'searchpname'])->name('search-product-name');
     Route::post('/sales/scan-barcode', [SaleController::class, 'scanBarcode'])->name('sales.scan_barcode');
-    Route::post('/sales/store', [SaleController::class, 'store'])->middleware('permission:sales.create')->name('sales.store');
-    Route::post('/sales/post-final', [SaleController::class, 'postFinal'])->middleware('permission:sales.create')->name('sales.post_final');
+    Route::post('/sales/store', [SaleController::class, 'store'])->name('sales.store');
+    Route::post('/sales/post-final', [SaleController::class, 'postFinal'])->name('sales.post_final');
 
     // Sale Return Routes - NEW SYSTEM
     Route::get('sale/return', [App\Http\Controllers\SaleReturnController::class, 'saleReturnIndex'])->middleware('permission:sales.view')->name('sale.return.index');
@@ -371,12 +371,19 @@ Route::middleware('auth')->group(function () {
     Route::get('sale/return/{id}', [App\Http\Controllers\SaleReturnController::class, 'showReturnForm'])->middleware('permission:sales.create')->name('sale.return.show');
     Route::post('sale/return/store', [App\Http\Controllers\SaleReturnController::class, 'processSaleReturn'])->middleware('permission:sales.create')->name('sale.return.store');
 
-    Route::get('/sales/{id}/invoice', [SaleController::class, 'saleinvoice'])->middleware('permission:sales.view|sales.view_own')->name('sales.invoice');
+    Route::get('/sales/{id}/invoice', [SaleController::class, 'saleinvoice'])->name('sales.invoice');
     Route::get('/sales/{id}/edit', [SaleController::class, 'saleedit'])->middleware('permission:sales.edit')->name('sales.edit');
-    Route::put('/sales/{id}', [SaleController::class, 'updatesale'])->middleware('permission:sales.edit')->name('sales.update');
+    Route::put('/sales/{id}', [SaleController::class, 'updatesale'])->name('sales.update');
     Route::get('/sales/{id}/dc', [SaleController::class, 'saledc'])->middleware('permission:sales.view|sales.view_own')->name('sales.dc');
     Route::get('/sales/{id}/dc-thermal', [SaleController::class, 'saledcThermal'])->middleware('permission:sales.view|sales.view_own')->name('sales.dc_thermal');
-    Route::get('/sales/{id}/recepit', [SaleController::class, 'salereceipt'])->middleware('permission:sales.view|sales.view_own')->name('sales.receipt');
+    Route::get('/sales/{id}/recepit', [SaleController::class, 'salereceipt'])->name('sales.receipt');
+
+    // Customer Orders Delivery Routes (Completely independent from sales permissions)
+    Route::get('/customer-orders/deliver/{id?}', [SaleController::class, 'convertFromOrder'])->name('customer_orders.deliver_page');
+    Route::post('/customer-orders/delivery/save', [SaleController::class, 'store'])->name('customer_orders.delivery.store');
+    Route::post('/customer-orders/delivery/post-final', [SaleController::class, 'postFinal'])->name('customer_orders.delivery.post_final');
+    Route::get('/customer-orders/delivery/{id}/invoice', [SaleController::class, 'saleinvoice'])->name('customer_orders.delivery.invoice');
+    Route::get('/customer-orders/delivery/{id}/receipt', [SaleController::class, 'salereceipt'])->name('customer_orders.delivery.receipt');
 
     // booking system
 

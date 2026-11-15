@@ -395,10 +395,15 @@
             </svg>
             Print
         </button>
-        <a href="{{ route('sales.receipt', $sale->id) }}?from=pos" class="btn btn-success btn-sm shadow fw-bold d-flex align-items-center" target="_blank">
+        @php
+            $isOrderDelivery = (isset($sale) && ((!empty($sale->reference) && str_contains($sale->reference, 'Customer Order')) || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists()));
+            $thermalUrl = $isOrderDelivery ? (route('customer_orders.delivery.receipt', $sale->id) . '?from=pos') : (route('sales.receipt', $sale->id) . '?from=pos');
+            $backTarget = $isOrderDelivery ? route('customer_orders.index') : $backUrl;
+        @endphp
+        <a href="{{ $thermalUrl }}" class="btn btn-success btn-sm shadow fw-bold d-flex align-items-center" target="_blank">
             <i class="fas fa-receipt me-1"></i> Thermal Print
         </a>
-        <a href="{{ $backUrl }}" class="btn btn-secondary btn-sm shadow fw-bold d-flex align-items-center">
+        <a href="{{ $backTarget }}" class="btn btn-secondary btn-sm shadow fw-bold d-flex align-items-center">
             <i class="fas fa-arrow-left me-1"></i> Back
         </a>
     </div>

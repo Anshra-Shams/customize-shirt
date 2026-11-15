@@ -847,4 +847,315 @@ class CustomerOrderTest extends TestCase
         $stockRestored = \App\Models\WarehouseStock::where('product_id', $rawMaterial->id)->sum('total_pieces');
         $this->assertEquals(10, $stockRestored);
     }
+
+    public function test_order_delivery_page_auto_loads_first_pending_order_and_completes_delivery(): void
+    {
+        $user = $this->makeAdminUser();
+        $customer = Customer::first();
+        if (!$customer) {
+            $customer = Customer::create([
+                'customer_id' => 'CUST-TEST-' . uniqid(),
+                'customer_name' => 'Auto Delivery Test Customer',
+                'mobile' => '03001234567',
+                'opening_balance' => 0,
+            ]);
+        }
+
+        $order = CustomerOrder::create([
+            'order_no' => 'ORD-DELIV-' . uniqid(),
+            'customer_id' => $customer->id,
+            'order_date' => now()->toDateString(),
+            'status' => 'ready',
+            'subtotal' => 1200,
+            'total_amount' => 1200,
+            'advance_amount' => 200,
+            'created_by' => $user->id,
+        ]);
+
+        \App\Models\CustomerOrderItem::create([
+            'customer_order_id' => $order->id,
+            'item_name' => 'Tailored Kurta',
+            'qty' => 2,
+            'unit' => 'Pcs',
+            'price' => 600,
+            'total' => 1200,
+        ]);
+
+        // 1. Visit /sales/from-order without passing ID in URL -> Should auto-load first pending order
+        $response = $this->actingAs($user)->get(route('sales.from.order'));
+        $response->assertStatus(200);
+        $response->assertSee('Tailored Kurta');
+        $response->assertSee($order->order_no);
+        $response->assertSee($customer->customer_name);
+
+        // 2. Simulate Save & Complete Delivery submission
+        $payload = [
+            'action' => 'sale',
+            'customer_order_id' => $order->id,
+            'order_advance_amount' => 200,
+            'reference' => 'Customer Order #' . $order->order_no,
+            'credit_days' => 0,
+            'is_walkin' => 0,
+            'customer' => $customer->id,
+            'Invoice_no' => 'DEL-TEST-' . uniqid(),
+            'sale_date' => now()->toDateString(),
+            'product_id' => [null],
+            'is_manual' => ['1'],
+            'manual_product_name' => ['Tailored Kurta'],
+            'color' => [''],
+            'warehouse_id' => [1],
+            'carton_qty' => [2],
+            'loose_qty' => [0],
+            'pack_qty' => [1],
+            'qty' => [2],
+            'total_pieces' => [2],
+            'visible_price' => [600],
+            'price_per_piece' => [600],
+            'item_disc' => [0],
+            'discount_type' => ['percent'],
+            'total' => [1200],
+            'gross_amount' => [1200],
+            'receipt_account_id' => [1],
+            'receipt_amount' => [1000],
+        ];
+
+        $storeRes = $this->actingAs($user)->postJson(route('sales.store'), $payload);
+        $storeRes->assertStatus(200);
+        $this->assertTrue($storeRes->json('ok'));
+        $saleId = $storeRes->json('booking_id');
+        $this->assertNotEmpty($saleId);
+
+        $payload['booking_id'] = $saleId;
+        $postRes = $this->actingAs($user)->postJson(route('sales.post_final'), $payload);
+        $postRes->assertStatus(200);
+        $this->assertTrue($postRes->json('ok'));
+        $this->assertStringContainsString((string)$saleId, $postRes->json('invoice_url'));
+
+        // 3. Verify order is now delivered
+        $order->refresh();
+        $this->assertEquals('delivered', $order->status);
+        $this->assertEquals($saleId, $order->sale_id);
+        $this->assertNotNull($order->delivered_at);
+        $this->assertEquals($user->id, $order->delivered_by);
+    }
+
+    public function test_user_without_sales_permission_can_deliver_customer_order_and_view_invoice(): void
+    {
+        // User 2 (admin / branch) does NOT have sales.create or sales.view
+        $branchUser = User::find(2);
+        if (!$branchUser) {
+            $branchUser = User::create([
+                'name' => 'Branch Staff No Sale Perm',
+                'email' => 'branch_' . uniqid() . '@example.com',
+                'password' => bcrypt('secret123'),
+            ]);
+        }
+        $this->assertFalse($branchUser->can('sales.create'));
+        $this->assertFalse($branchUser->can('sales.view'));
+
+        $customer = Customer::first();
+        $order = CustomerOrder::create([
+            'order_no' => 'ORD-BRANCH-' . uniqid(),
+            'customer_id' => $customer->id,
+            'order_date' => now()->toDateString(),
+            'status' => 'ready',
+            'subtotal' => 800,
+            'total_amount' => 800,
+            'advance_amount' => 300,
+            'created_by' => $branchUser->id,
+        ]);
+
+        \App\Models\CustomerOrderItem::create([
+            'customer_order_id' => $order->id,
+            'item_name' => 'Cotton Shirt',
+            'qty' => 1,
+            'unit' => 'Pcs',
+            'price' => 800,
+            'total' => 800,
+        ]);
+
+        // Assert regular sale without customer_order_id is blocked with 403
+        $regularSalePayload = [
+            'action' => 'sale',
+            'is_walkin' => 0,
+            'customer' => $customer->id,
+            'Invoice_no' => 'SALE-TEST-' . uniqid(),
+            'product_id' => [null],
+            'is_manual' => ['1'],
+            'manual_product_name' => ['Some Product'],
+            'qty' => [1],
+            'total_pieces' => [1],
+            'visible_price' => [500],
+            'price_per_piece' => [500],
+            'total' => [500],
+        ];
+        $blockedRes = $this->actingAs($branchUser)->postJson(route('sales.store'), $regularSalePayload);
+        $blockedRes->assertStatus(403);
+
+        // Assert customer order delivery succeeds with 200
+        $deliveryPayload = [
+            'action' => 'sale',
+            'customer_order_id' => $order->id,
+            'order_advance_amount' => 300,
+            'reference' => 'Customer Order #' . $order->order_no,
+            'credit_days' => 0,
+            'is_walkin' => 0,
+            'customer' => $customer->id,
+            'Invoice_no' => 'DEL-BRANCH-' . uniqid(),
+            'sale_date' => now()->toDateString(),
+            'product_id' => [null],
+            'is_manual' => ['1'],
+            'manual_product_name' => ['Cotton Shirt'],
+            'color' => [''],
+            'warehouse_id' => [1],
+            'carton_qty' => [1],
+            'loose_qty' => [0],
+            'pack_qty' => [1],
+            'qty' => [1],
+            'total_pieces' => [1],
+            'visible_price' => [800],
+            'price_per_piece' => [800],
+            'item_disc' => [0],
+            'discount_type' => ['percent'],
+            'total' => [800],
+            'gross_amount' => [800],
+            'receipt_account_id' => [1],
+            'receipt_amount' => [500],
+        ];
+
+        // Test via dedicated customer order delivery endpoint
+        $deliveryRes = $this->actingAs($branchUser)->postJson(route('customer_orders.delivery.post_final'), $deliveryPayload);
+        $deliveryRes->assertStatus(200);
+        $this->assertTrue($deliveryRes->json('ok'));
+        $saleId = $deliveryRes->json('booking_id');
+
+        // Assert delivery invoice is accessible without sales.view permission
+        $invoiceRes = $this->actingAs($branchUser)->get(route('customer_orders.delivery.invoice', $saleId));
+        $invoiceRes->assertStatus(200);
+        $invoiceRes->assertSee('Cotton Shirt');
+
+        // Assert standard /sales/{id}/invoice is also accessible for delivery
+        $stdInvoiceRes = $this->actingAs($branchUser)->get(route('sales.invoice', $saleId));
+        $stdInvoiceRes->assertStatus(200);
+        $stdInvoiceRes->assertSee('Cotton Shirt');
+
+        // Assert thermal receipt is accessible
+        $receiptRes = $this->actingAs($branchUser)->get(route('customer_orders.delivery.receipt', $saleId));
+        $receiptRes->assertStatus(200);
+
+        // Verify order is marked delivered
+        $order->refresh();
+        $this->assertEquals('delivered', $order->status);
+        $this->assertEquals($saleId, $order->sale_id);
+
+        // Clean up
+        \App\Models\SaleItem::where('sale_id', $saleId)->delete();
+        \App\Models\Sale::where('id', $saleId)->delete();
+        $order->items()->delete();
+        $order->delete();
+    }
+
+    public function test_customer_order_delivery_cogs_and_profit_loss_calculation(): void
+    {
+        $user = User::first() ?? User::factory()->create();
+        $customer = Customer::create([
+            'customer_id' => 'CUST-' . rand(1000, 9999),
+            'customer_name' => 'Profit Test Customer ' . uniqid(),
+            'customer_type' => 'Main Customer',
+            'opening_balance' => 0,
+        ]);
+
+        $product = Product::create([
+            'item_code' => 'TEST-PROD-' . uniqid(),
+            'item_name' => 'Custom Suit ' . uniqid(),
+            'size_mode' => 'by_pieces',
+            'purchase_price_per_piece' => 0, // catalog purch price is 0
+            'sale_price_per_piece' => 1000,
+            'is_raw_material' => 0,
+            'is_part' => 0,
+        ]);
+
+        $order = CustomerOrder::create([
+            'order_no' => 'ORD-TEST-' . rand(1000, 9999),
+            'customer_id' => $customer->id,
+            'order_date' => now()->toDateString(),
+            'status' => 'pending',
+            'total_qty' => 4,
+            'subtotal' => 4000,
+            'discount' => 0,
+            'total_amount' => 4000,
+            'advance_amount' => 1000,
+            'created_by' => $user->id,
+        ]);
+
+        // Materials: 800 fabric + 800 tailoring = 1600 total (unit cost = 400)
+        \App\Models\CustomerOrderItem::create([
+            'customer_order_id' => $order->id,
+            'product_id' => $product->id,
+            'item_name' => $product->item_name,
+            'qty' => 4,
+            'price' => 1000,
+            'total' => 4000,
+            'materials' => [
+                ['name' => 'Fabric', 'amount' => 800, 'qty' => 4],
+                ['name' => 'Tailoring', 'amount' => 800, 'qty' => 4],
+            ],
+        ]);
+
+        // Deliver order
+        $payload = [
+            'customer_order_id' => $order->id,
+            'customer' => $customer->id,
+            'reference' => 'Customer Order #' . $order->order_no,
+            'product_id' => [$product->id],
+            'is_manual' => ['0'],
+            'manual_product_name' => [$product->item_name],
+            'carton_qty' => [4],
+            'qty' => [4],
+            'total_pieces' => [4],
+            'price_per_piece' => [1000],
+            'visible_price' => [1000],
+            'item_disc' => [0],
+            'discount_type' => ['percent'],
+            'total' => [4000],
+            'gross_amount' => [4000],
+            'receipt_account_id' => [1],
+            'receipt_amount' => [3000],
+        ];
+
+        $delRes = $this->actingAs($user)->postJson(route('customer_orders.delivery.post_final'), $payload);
+        $delRes->assertStatus(200);
+        $saleId = $delRes->json('booking_id');
+
+        // 1. Verify sale_item has purchase_price set to 400 (1600 / 4)
+        $saleItem = \App\Models\SaleItem::where('sale_id', $saleId)->first();
+        $this->assertNotNull($saleItem);
+        $this->assertEquals(400.00, (float) $saleItem->purchase_price);
+
+        // 2. Verify Profit & Loss Report calculates COGS and Profit correctly
+        $reportCtrl = app(\App\Http\Controllers\ReportingController::class);
+        $req = new \Illuminate\Http\Request([
+            'start_date' => now()->startOfMonth()->toDateString(),
+            'end_date' => now()->endOfMonth()->toDateString(),
+            'product_id' => $product->id,
+        ]);
+        $reportRes = $reportCtrl->fetchProfitLoss($req);
+        $data = $reportRes->getData();
+
+        $this->assertNotEmpty($data->products);
+        $stat = collect($data->products)->firstWhere('item_code', $product->item_code);
+        $this->assertNotNull($stat);
+        $this->assertEquals(4, (float) $stat->sold_qty);
+        $this->assertEquals(4000, (float) $stat->revenue);
+        $this->assertEquals(1600, (float) $stat->cogs);
+        $this->assertEquals(2400, (float) $stat->profit);
+
+        // Clean up
+        \App\Models\SaleItem::where('sale_id', $saleId)->delete();
+        \App\Models\Sale::where('id', $saleId)->delete();
+        $order->items()->delete();
+        $order->delete();
+        $product->delete();
+        $customer->delete();
+    }
 }

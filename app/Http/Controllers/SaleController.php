@@ -422,11 +422,12 @@ class SaleController extends Controller
     {
         $order = null;
         if ($id) {
-            $order = CustomerOrder::with(['customer', 'items.product.unit', 'items.product.brand', 'creator'])->findOrFail($id);
+            $order = CustomerOrder::has('items')->with(['customer', 'items.product.unit', 'items.product.brand', 'creator'])->findOrFail($id);
         }
 
-        // Fetch all undelivered customer orders for dropdown selection
-        $undeliveredOrders = CustomerOrder::with(['customer', 'items.product.unit', 'items.product.brand'])
+        // Fetch all undelivered customer orders that have items for dropdown selection
+        $undeliveredOrders = CustomerOrder::has('items')
+            ->with(['customer', 'items.product.unit', 'items.product.brand'])
             ->where(function($q) use ($id) {
                 $q->whereNotIn('status', ['delivered', 'cancelled']);
                 if ($id) {
@@ -435,6 +436,10 @@ class SaleController extends Controller
             })
             ->orderByDesc('id')
             ->get();
+
+        if (! $order && $undeliveredOrders->isNotEmpty()) {
+            $order = $undeliveredOrders->first();
+        }
 
         $customer = Customer::all();
         $warehouse = Warehouse::all();
@@ -1151,7 +1156,17 @@ class SaleController extends Controller
         if (!$sale) {
             abort(404, 'Sale invoice not found');
         }
-        $this->checkSaleViewPermission($sale);
+
+        $isCustomerOrderDelivery = !empty($sale->reference) && str_contains($sale->reference, 'Customer Order')
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists();
+
+        if (! $isCustomerOrderDelivery) {
+            $user = auth()->user();
+            if ($user && ! $user->can('sales.view') && ! $user->can('sales.view_own')) {
+                abort(403, 'User does not have the right permissions.');
+            }
+            $this->checkSaleViewPermission($sale);
+        }
 
         $items = $this->_getSaleItems($sale);
         $isEstimate = request()->query('type') === 'estimate';
@@ -1231,7 +1246,20 @@ class SaleController extends Controller
         if (!$sale) {
             abort(404, 'Sale not found');
         }
-        $this->checkSaleViewPermission($sale);
+
+        $isCustomerOrderDelivery = $request->filled('customer_order_id')
+            || (!empty($request->reference) && str_contains($request->reference, 'Customer Order'))
+            || (!empty($sale->reference) && str_contains($sale->reference, 'Customer Order'))
+            || ($sale->exists && \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists());
+
+        if (! $isCustomerOrderDelivery) {
+            $user = auth()->user();
+            if ($user && ! $user->can('sales.edit')) {
+                abort(403, 'User does not have the right permissions.');
+            }
+            $this->checkSaleViewPermission($sale);
+        }
+
         if (in_array($sale->sale_status, ['cancelled', 'returned'])) {
             return redirect()->back()->with('error', 'Cannot edit a '.$sale->sale_status.' sale.');
         }
@@ -1269,7 +1297,18 @@ class SaleController extends Controller
         if (!$sale) {
             abort(404, 'Sale receipt not found');
         }
-        $this->checkSaleViewPermission($sale);
+
+        $isCustomerOrderDelivery = !empty($sale->reference) && str_contains($sale->reference, 'Customer Order')
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists();
+
+        if (! $isCustomerOrderDelivery) {
+            $user = auth()->user();
+            if ($user && ! $user->can('sales.view') && ! $user->can('sales.view_own')) {
+                abort(403, 'User does not have the right permissions.');
+            }
+            $this->checkSaleViewPermission($sale);
+        }
+
         $items = $this->_getSaleItems($sale);
 
         // Logic for Previous Balance (copied from saleinvoice)
@@ -1321,6 +1360,18 @@ class SaleController extends Controller
 
     private function processSale(Request $request, Sale $sale)
     {
+        $isCustomerOrderDelivery = $request->filled('customer_order_id')
+            || (!empty($request->reference) && str_contains($request->reference, 'Customer Order'))
+            || (!empty($sale->reference) && str_contains($sale->reference, 'Customer Order'))
+            || ($sale->exists && \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists());
+
+        if (! $isCustomerOrderDelivery) {
+            $user = auth()->user();
+            if ($user && ! $user->can('sales.create')) {
+                abort(403, 'User does not have the right permissions.');
+            }
+        }
+
         $isWalkin = $request->input('is_walkin') == '1';
 
         $rules = [
@@ -1348,7 +1399,7 @@ class SaleController extends Controller
 
         // Concurrency Safe Transaction
         try {
-            return DB::transaction(function () use ($request, $sale, $status, $isWalkin) {
+            return DB::transaction(function () use ($request, $sale, $status, $isWalkin, $isCustomerOrderDelivery) {
 
                 // If this is an update to a previously posted sale, rollback its impact first
                 if ($sale->exists && $sale->sale_status === 'posted') {
@@ -1379,6 +1430,17 @@ class SaleController extends Controller
                 // No credit days = no notification
                 $sale->credit_days = null;
                 $sale->due_date = null;
+            }
+
+            if ($isNew && $request->filled('customer_order_id')) {
+                $existingOrder = CustomerOrder::find($request->customer_order_id);
+                if ($existingOrder && $existingOrder->sale_id) {
+                    $existingSale = Sale::find($existingOrder->sale_id);
+                    if ($existingSale) {
+                        $sale = $existingSale;
+                        $isNew = false;
+                    }
+                }
             }
 
             if ($isNew) {
@@ -1428,6 +1490,43 @@ class SaleController extends Controller
                 // Restore stock if we were somehow editing a posted sale (should be blocked, but safety first)
                 // For now, we blocked editing posted sales, so strictly 'booked'.
                 SaleItem::where('sale_id', $sale->id)->delete();
+                if ($isCustomerOrderDelivery) {
+                    DB::table('stock_movements')->where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
+                }
+            }
+
+            $orderItemCosts = [];
+            $orderItemCostsByIndex = [];
+            if ($isCustomerOrderDelivery) {
+                $cOrderId = $request->customer_order_id;
+                if (!$cOrderId && !empty($sale->reference)) {
+                    if (preg_match('/#ORD-([A-Za-z0-9-]+)/', $sale->reference, $matches)) {
+                        $cOrder = CustomerOrder::where('order_no', 'ORD-'.$matches[1])->orWhere('order_no', $matches[1])->first();
+                        if ($cOrder) $cOrderId = $cOrder->id;
+                    }
+                }
+                if ($cOrderId) {
+                    $cOrderModel = CustomerOrder::with('items')->find($cOrderId);
+                    if ($cOrderModel) {
+                        foreach ($cOrderModel->items as $coIdx => $cItem) {
+                            $materials = is_array($cItem->materials) ? $cItem->materials : json_decode($cItem->materials, true);
+                            $matCost = 0;
+                            if (is_array($materials)) {
+                                foreach ($materials as $m) {
+                                    $matCost += (float)($m['amount'] ?? 0);
+                                }
+                            }
+                            $itemQty = (float)($cItem->qty ?? 1);
+                            $unitCost = $itemQty > 0 ? ($matCost / $itemQty) : $matCost;
+                            if ($unitCost > 0) {
+                                if ($cItem->product_id) {
+                                    $orderItemCosts[$cItem->product_id] = $unitCost;
+                                }
+                                $orderItemCostsByIndex[$coIdx] = $unitCost;
+                            }
+                        }
+                    }
+                }
             }
 
             $productIds = $request->product_id;
@@ -1577,9 +1676,12 @@ class SaleController extends Controller
                 $saleItem->unit_id = $unitId;
                 $saleItem->size_mode = $sizeMode;
 
+                $itemPurchasePrice = 0;
+
                 if ($isManual) {
                     $saleItem->is_manual = 1;
                     $saleItem->vendor_id = $manualVendorId;
+                    $itemPurchasePrice = $manualPurchasePrice;
                     $saleItem->purchase_price = $manualPurchasePrice;
 
                     $manualItemsForLedger[] = [
@@ -1590,6 +1692,38 @@ class SaleController extends Controller
                         'payment_amount' => $manualPaymentAmount,
                         'account_id' => $manualAccountId,
                     ];
+                } else {
+                    // 1. Check if explicitly provided in request
+                    if (isset($request->purchase_price[$index]) && (float)$request->purchase_price[$index] > 0) {
+                        $itemPurchasePrice = (float) $request->purchase_price[$index];
+                    }
+                    // 2. Check if Customer Order delivery
+                    elseif ($isCustomerOrderDelivery && !empty($orderItemCosts)) {
+                        if (isset($orderItemCosts[$pid])) {
+                            $itemPurchasePrice = (float) $orderItemCosts[$pid];
+                        } elseif (isset($orderItemCostsByIndex[$index])) {
+                            $itemPurchasePrice = (float) $orderItemCostsByIndex[$index];
+                        }
+                    }
+                    // 3. Fallback to product variant or catalog purchase price
+                    if ($itemPurchasePrice <= 0 && isset($product)) {
+                        $vPurchPrice = 0;
+                        $colorVal = $request->color[$index] ?? null;
+                        if (!empty($colorVal)) {
+                            $decoded = base64_decode($colorVal, true);
+                            $json = $decoded ? json_decode($decoded, true) : json_decode($colorVal, true);
+                            if (is_array($json)) {
+                                $vPurchPrice = (float)($json['purch_price'] ?? 0);
+                            }
+                        }
+                        if ($vPurchPrice > 0) {
+                            $itemPurchasePrice = $vPurchPrice;
+                        } else {
+                            $itemPurchasePrice = (float)($product->purchase_price_per_piece ?? 0);
+                        }
+                    }
+
+                    $saleItem->purchase_price = $itemPurchasePrice > 0 ? $itemPurchasePrice : null;
                 }
 
                 $saleItem->save();
@@ -2057,8 +2191,8 @@ class SaleController extends Controller
                     || (!empty($sale->reference) && str_contains($sale->reference, 'Customer Order'))
                     || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists();
 
-                $invoiceUrl = $isCustomerOrderDelivery ? route('sales.invoice', $sale->id) : (route('sales.receipt', $sale->id) . '?from=pos');
-                $receiptUrl = route('sales.receipt', $sale->id) . '?from=pos';
+                $invoiceUrl = $isCustomerOrderDelivery ? route('customer_orders.delivery.invoice', $sale->id) : (route('sales.receipt', $sale->id) . '?from=pos');
+                $receiptUrl = $isCustomerOrderDelivery ? (route('customer_orders.delivery.receipt', $sale->id) . '?from=pos') : (route('sales.receipt', $sale->id) . '?from=pos');
 
                 return response()->json([
                     'ok' => true,

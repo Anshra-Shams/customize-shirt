@@ -323,7 +323,9 @@ class HomeController extends Controller
             foreach ($saleItemsThisMonth as $si) {
                 $qty = (float)($si->total_pieces ?? 1);
                 
-                if ($si->is_manual) {
+                if ((float)$si->manual_purchase_price > 0) {
+                    $purchPrice = (float) $si->manual_purchase_price;
+                } elseif ($si->is_manual) {
                     $purchPrice = (float) $si->manual_purchase_price;
                 } else {
                     $purchPrice = 0;
@@ -376,7 +378,9 @@ class HomeController extends Controller
             foreach ($saleReturnsThisMonth as $sr) {
                 $qty = (float)($sr->qty ?? 1);
                 
-                if ($sr->is_manual) {
+                if ((float)$sr->manual_purchase_price > 0) {
+                    $purchPrice = (float) $sr->manual_purchase_price;
+                } elseif ($sr->is_manual) {
                     $purchPrice = (float) $sr->manual_purchase_price;
                 } else {
                     $purchPrice = 0;

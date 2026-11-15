@@ -478,7 +478,7 @@
         }
 
         const prev = toNum($('#previousBalance').val());
-        const receipts = toNum($('#receiptsTotal').text());
+        const receipts = toNum($('#receiptsTotal').text()) || toNum($('#receiptsTotalBadge').text()) || toNum($('#bottomPaymentsTotal').text());
         const orderAdvance = toNum($('#orderAdvanceAmountHidden').val());
         const isFromOrder = $('#customer_order_id').length > 0 && $('#customer_order_id').val() !== '';
 
@@ -533,7 +533,14 @@
         let customerName = "Select Customer";
         const customerVal = $('#customerSelect').val();
         if (customerVal) {
-            const customerData = $('#customerSelect').select2 ? $('#customerSelect').select2('data') : null;
+            let customerData = null;
+            if ($('#customerSelect').hasClass('select2-hidden-accessible')) {
+                try {
+                    customerData = $('#customerSelect').select2('data');
+                } catch (e) {
+                    customerData = null;
+                }
+            }
             if (customerData && customerData.length > 0 && customerData[0].customer) {
                 customerName = customerData[0].customer.customer_name;
             } else {
@@ -606,11 +613,12 @@
     function ensureSaved(suppressAlert = false) {
         return new Promise(function(resolve, reject) {
             const existing = $('#booking_id').val();
-            let url = '{{ route('sales.store') }}';
+            const isDelivery = (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode);
+            let url = isDelivery ? '{{ route('customer_orders.delivery.store') }}' : '{{ route('sales.store') }}';
             let method = 'POST';
             if (existing) {
-                url = '{{ route('sales.update', ':id') }}'.replace(':id', existing);
-                method = 'PUT';
+                url = isDelivery ? '{{ route('customer_orders.delivery.store') }}' : '{{ route('sales.update', ':id') }}'.replace(':id', existing);
+                method = isDelivery ? 'POST' : 'PUT';
             }
 
             $('#btnSave, #btnHeaderPosted, #btnPosted, #btnSaveAndComplete, #btnSaveAndComplete2, #btnHeaderSaveSale').prop('disabled', true);
@@ -655,19 +663,30 @@
         let formData = $('#saleForm').serializeArray();
         formData = formData.filter(item => item.name !== '_method');
 
-        $.post('{{ route('sales.post_final') }}', $.param(formData))
+        const isDelivery = (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode);
+        const postUrl = isDelivery ? '{{ route('customer_orders.delivery.post_final') }}' : '{{ route('sales.post_final') }}';
+
+        $.post(postUrl, $.param(formData))
             .done(function(res) {
                 if (res?.ok) {
-                    window.open(res.invoice_url, '_blank');
-                    Swal.fire({
-                        title: 'Success!',
-                        text: (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? 'Order Delivered & Invoice Opened' : 'Posted & invoice opened',
-                        icon: 'success',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
+                    try {
+                        window.open(res.invoice_url, '_blank');
+                    } catch(e) {}
+
                     const redirectUrl = (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? "{{ route('customer_orders.index') }}" : "{{ route('sale.index') }}";
-                    setTimeout(() => window.location.href = redirectUrl, 2000);
+
+                    Swal.fire({
+                        title: (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? 'Order Delivered!' : 'Success!',
+                        html: `Invoice generated successfully.<br><br><a href="${res.invoice_url}" target="_blank" class="btn btn-success btn-sm fw-bold px-3 py-2"><i class="fas fa-print me-1"></i> Open Invoice</a>`,
+                        icon: 'success',
+                        timer: 3500,
+                        timerProgressBar: true,
+                        showConfirmButton: true,
+                        confirmButtonText: 'Continue',
+                        confirmButtonColor: '#16a34a'
+                    }).then(() => {
+                        window.location.href = redirectUrl;
+                    });
                 } else {
                     Swal.fire('Post Failed', res.msg || 'Post failed', 'error');
                 }
@@ -1310,8 +1329,8 @@
             if (actionType === 'sale') {
                 // Walk-in 100% Payment Validation Check
                 const isWalkin = $('#walkinToggle').is(':checked');
-                const invoiceNet = toNum($('#totalBalance').val());
-                const paidNow = toNum($('#receiptsTotal').text());
+                const invoiceNet = toNum($('#totalBalance').val()) || toNum($('#walkinNetTotal').text());
+                const paidNow = toNum($('#receiptsTotal').text()) || toNum($('#receiptsTotalBadge').text()) || toNum($('#bottomPaymentsTotal').text());
                 const orderAdvance = toNum($('#orderAdvanceAmountHidden').val());
 
                 if (isWalkin) {
@@ -1332,8 +1351,8 @@
                 const rangeBal = toNum($('#rangeBalance').val());
                 if (rangeBal > 0) {
                     const prevBal = toNum($('#previousBalance').val());
-                    const invoiceNet = toNum($('#totalBalance').val());
-                    const paidNow = toNum($('#receiptsTotal').text());
+                    const invoiceNet = toNum($('#totalBalance').val()) || toNum($('#walkinNetTotal').text());
+                    const paidNow = toNum($('#receiptsTotal').text()) || toNum($('#receiptsTotalBadge').text()) || toNum($('#bottomPaymentsTotal').text());
                     const projectedBalance = prevBal + invoiceNet - paidNow;
 
                     if (projectedBalance > rangeBal) {

@@ -765,6 +765,14 @@
                 <input type="hidden" id="tel" name="tel">
                 <input type="hidden" id="previousBalance" value="0">
                 <input type="hidden" id="rangeBalance" value="0">
+                <input type="hidden" name="total_gross" id="subTotal1" value="0">
+                <input type="hidden" name="total_subtotal" id="subTotal2" value="0">
+                <input type="hidden" name="total_extra_cost" id="discountAmount" value="0">
+                <input type="hidden" name="total_net" id="totalBalance" value="0">
+                <input type="hidden" name="cash" value="0">
+                <input type="hidden" name="card" value="0">
+                <input type="hidden" name="backend_change" id="backendChange" value="0">
+                <input type="hidden" name="discount_percent" id="discountPercent" value="0">
 
                 <!-- 2-COLUMN RESPONSIVE POS LAYOUT -->
                 <div class="row g-2 align-items-stretch">
@@ -827,6 +835,16 @@
                                         @if ($isDelivery)
                                             @if (isset($fromOrder) && $fromOrder && count($fromOrder->items) > 0)
                                                 @foreach ($fromOrder->items as $idx => $item)
+                                                    @php
+                                                        $itemMatCost = 0;
+                                                        $mats = is_array($item->materials) ? $item->materials : (json_decode($item->materials, true) ?: []);
+                                                        if (is_array($mats)) {
+                                                            foreach ($mats as $m) {
+                                                                $itemMatCost += (float)($m['amount'] ?? 0);
+                                                            }
+                                                        }
+                                                        $itemUnitCost = (float)$item->qty > 0 ? ($itemMatCost / (float)$item->qty) : 0;
+                                                    @endphp
                                                     <tr class="delivery-item-row" data-item-id="{{ $item->id }}">
                                                         <td class="text-center fw-bold text-muted row-index" style="vertical-align:middle; font-size:0.75rem;">{{ $idx + 1 }}</td>
                                                         <td class="col-product" style="padding: 4px 8px !important; vertical-align: middle !important;">
@@ -837,6 +855,7 @@
                                                                 @endif
                                                             </div>
                                                             <input type="hidden" class="product-id-hidden" name="product_id[]" value="{{ $item->product_id ?? '' }}">
+                                                            <input type="hidden" class="purchase-price-input" name="purchase_price[]" value="{{ $itemUnitCost }}">
                                                             <input type="hidden" class="is-manual" name="is_manual[]" value="{{ $item->product_id ? '0' : '1' }}">
                                                             <input type="hidden" name="manual_product_name[]" value="{{ $item->item_name }}">
                                                             <input type="hidden" class="variant-data-hidden" name="color[]" value="">
@@ -1030,6 +1049,7 @@
                                 <div class="summary-row">
                                     <span class="text-muted">Total Paid</span>
                                     <span class="fw-bold text-success" id="receiptsTotalBadge">0.00</span>
+                                    <span id="receiptsTotal" class="d-none">0.00</span>
                                 </div>
                                 <div class="summary-row pt-1">
                                     <span class="fw-bold text-danger" id="summaryChangeLabel">Change</span>
@@ -1151,9 +1171,6 @@
                     @endforeach
                 @endif
             </div>
-        </div>
-    </div>
-            </form>
         </div>
     </div>
 
@@ -1637,14 +1654,26 @@
             }
 
             function renderDeliveryItemRow(item, index) {
-                let pName = item.item_name || 'Item';
+                let pName = item.item_name || (item.product ? item.product.item_name : 'Item');
                 let pDesc = item.description || '';
-                let unit = item.unit || 'Pcs';
+                let unit = item.unit || (item.product && item.product.unit ? item.product.unit.name : 'Pcs');
                 let qty = parseFloat(item.qty) || 1;
                 let price = parseFloat(item.price) || 0;
                 let lineTotal = (qty * price).toFixed(2);
                 let pid = item.product_id || '';
                 let isManual = pid ? '0' : '1';
+
+                let matCost = 0;
+                let mats = Array.isArray(item.materials) ? item.materials : [];
+                if (typeof item.materials === 'string') {
+                    try { mats = JSON.parse(item.materials); } catch(e) {}
+                }
+                if (Array.isArray(mats)) {
+                    mats.forEach(function(m) {
+                        matCost += parseFloat(m.amount) || 0;
+                    });
+                }
+                let unitCost = qty > 0 ? (matCost / qty) : 0;
 
                 return `
                 <tr class="delivery-item-row" data-item-id="${item.id || ''}">
@@ -1658,6 +1687,7 @@
                             ${pDesc ? `<span class="text-muted small" style="font-size:0.72rem; line-height:1.2;">${escapeHtml(pDesc)}</span>` : ''}
                         </div>
                         <input type="hidden" class="product-id-hidden" name="product_id[]" value="${pid}">
+                        <input type="hidden" class="purchase-price-input" name="purchase_price[]" value="${unitCost}">
                         <input type="hidden" class="is-manual" name="is_manual[]" value="${isManual}">
                         <input type="hidden" name="manual_product_name[]" value="${escapeHtml(pName)}">
                         <input type="hidden" class="variant-data-hidden" name="color[]" value="">
@@ -1849,7 +1879,13 @@
             if (isDeliveryMode) {
                 // If loaded with a specific fromOrder
                 @if (isset($fromOrder) && $fromOrder)
+                    $('#pendingOrderSelect').val('{{ $fromOrder->id }}');
                     loadOrderIntoDeliveryForm(@json($fromOrder));
+                @else
+                    if (typeof allPendingOrders !== 'undefined' && allPendingOrders.length > 0) {
+                        $('#pendingOrderSelect').val(allPendingOrders[0].id);
+                        loadOrderIntoDeliveryForm(allPendingOrders[0]);
+                    }
                 @endif
 
                 // When user selects an order from the dropdown
@@ -1874,9 +1910,22 @@
                         if (typeof updateGrandTotals === 'function') updateGrandTotals();
                         return;
                     }
-                    const order = allPendingOrders.find(o => String(o.id) === String(selectedId));
+                    const order = (typeof allPendingOrders !== 'undefined') ? allPendingOrders.find(o => String(o.id) === String(selectedId)) : null;
                     if (order) {
                         loadOrderIntoDeliveryForm(order);
+                        if (window.history && window.history.replaceState) {
+                            window.history.replaceState({}, '', "{{ url('sales/from-order') }}/" + selectedId);
+                        }
+                    } else {
+                        window.location.href = "{{ url('sales/from-order') }}/" + selectedId;
+                    }
+                });
+
+                // Dedicated direct click listener on Complete Delivery button
+                $(document).off('click', '#btnSaveAndComplete').on('click', '#btnSaveAndComplete', function(e) {
+                    e.preventDefault();
+                    if (typeof submitSaleOrDelivery === 'function') {
+                        submitSaleOrDelivery('sale');
                     }
                 });
             }

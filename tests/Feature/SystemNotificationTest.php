@@ -133,5 +133,10 @@ class SystemNotificationTest extends TestCase
                 ->where('is_read', false)
                 ->exists()
         );
+
+        // Cleanup test orders & customer so dev DB stays clean
+        $orderToday->delete();
+        $orderOverdue->delete();
+        $customer->delete();
     }
 }
