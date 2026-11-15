@@ -148,13 +148,13 @@
                 {{-- Start Date --}}
                 <div class="sale-filter-group" style="margin-right: 18px;">
                     <label for="start_date_desk" class="sale-filter-label">Start:</label>
-                    <input type="datetime-local" name="start_date" id="start_date_desk" class="form-control form-control-sm fw-bold startDateInput" style="height: 36px; width: 185px; font-size: .78rem; border-radius: 6px;">
+                    <input type="datetime-local" name="start_date" id="start_date_desk" class="form-control form-control-sm fw-bold startDateInput" value="{{ date('Y-m-d\T00:00') }}" style="height: 36px; width: 185px; font-size: .78rem; border-radius: 6px;">
                 </div>
 
                 {{-- End Date --}}
                 <div class="sale-filter-group" style="margin-right: 18px;">
                     <label for="end_date_desk" class="sale-filter-label">End:</label>
-                    <input type="datetime-local" name="end_date" id="end_date_desk" class="form-control form-control-sm fw-bold endDateInput" style="height: 36px; width: 185px; font-size: .78rem; border-radius: 6px;">
+                    <input type="datetime-local" name="end_date" id="end_date_desk" class="form-control form-control-sm fw-bold endDateInput" value="{{ date('Y-m-d\T23:59') }}" style="height: 36px; width: 185px; font-size: .78rem; border-radius: 6px;">
                 </div>
 
                 {{-- Cashier / User --}}
@@ -203,11 +203,11 @@
                     </div>
                     <div class="col-6 mb-1">
                         <label class="form-label mb-1 fw-bold text-secondary" style="font-size: 11px;">Start Date</label>
-                        <input type="datetime-local" name="start_date" id="start_date_mob" class="form-control form-control-sm startDateInput" style="font-size: 11px;">
+                        <input type="datetime-local" name="start_date" id="start_date_mob" class="form-control form-control-sm startDateInput" value="{{ date('Y-m-d\T00:00') }}" style="font-size: 11px;">
                     </div>
                     <div class="col-6 mb-1">
                         <label class="form-label mb-1 fw-bold text-secondary" style="font-size: 11px;">End Date</label>
-                        <input type="datetime-local" name="end_date" id="end_date_mob" class="form-control form-control-sm endDateInput" style="font-size: 11px;">
+                        <input type="datetime-local" name="end_date" id="end_date_mob" class="form-control form-control-sm endDateInput" value="{{ date('Y-m-d\T23:59') }}" style="font-size: 11px;">
                     </div>
                     <div class="col-12 mb-1">
                         <label class="form-label mb-1 fw-bold text-secondary" style="font-size: 11px;">Cashier</label>
@@ -512,15 +512,19 @@
                         </div>`;
                     });
 
-                    // Grand total row inside desktop table
-                    html += `<tr class="fw-bold bg-light" id="grandTotalRow">
-                        <td colspan="7" class="text-end">Grand Total:</td>
-                        <td id="grandQty">${grandQty.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                        <td>-</td>
-                        <td id="grandTotal">${grandTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                        <td id="grandNet">${grandNet.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                        <td id="grandReturn">${grandReturn.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                    </tr>`;
+                    if (salesData.length === 0) {
+                        html = `<tr><td colspan="12" class="text-center py-4 text-muted"><i class="fas fa-folder-open fa-2x mb-2 text-secondary d-block"></i><span class="small fw-bold">No Sales Data Found for Selected Range</span></td></tr>`;
+                    } else {
+                        // Grand total row inside desktop table
+                        html += `<tr class="fw-bold bg-light" id="grandTotalRow">
+                            <td colspan="7" class="text-end">Grand Total:</td>
+                            <td id="grandQty">${grandQty.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                            <td>-</td>
+                            <td id="grandTotal">${grandTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                            <td id="grandNet">${grandNet.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                            <td id="grandReturn">${grandReturn.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                        </tr>`;
+                    }
 
                     $('#saleBody').html(html);
                     $('#saleMobileContainer').html(mobHtml || '<div class="card border-0 shadow-sm rounded-3 text-center py-4 bg-white"><div class="card-body py-4 text-muted"><i class="fas fa-folder-open fa-2x mb-2 text-secondary"></i><p class="small fw-bold mb-0">No Sales Data Found</p></div></div>');
@@ -604,6 +608,11 @@
             link.click();
             document.body.removeChild(link);
         });
+
+        // Auto-load sales report on page load
+        if ($('.btnSearchTrigger').length > 0) {
+            $('.btnSearchTrigger').first().trigger('click');
+        }
 
     });
 </script>

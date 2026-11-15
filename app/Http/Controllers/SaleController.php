@@ -1476,7 +1476,11 @@ class SaleController extends Controller
             }
 
             if ($request->filled('sale_date')) {
-                $sale->created_at = \Carbon\Carbon::parse($request->sale_date)->format('Y-m-d H:i:s');
+                $parsedDate = \Carbon\Carbon::parse($request->sale_date);
+                if ($parsedDate->isToday()) {
+                    $parsedDate = $parsedDate->setTimeFrom(now());
+                }
+                $sale->created_at = $parsedDate->format('Y-m-d H:i:s');
             }
 
             $sale->save(); // Save first to get ID

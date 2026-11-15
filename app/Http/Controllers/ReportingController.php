@@ -1323,13 +1323,28 @@ class ReportingController extends Controller
             $end = $request->end_date;
 
             // Use Eloquent to handle relations and new table structure
-            $query = \App\Models\Sale::with(['user', 'customer_relation', 'items.product', 'returns']);
+            $query = \App\Models\Sale::with(['user', 'customer_relation', 'items.product', 'returns'])
+                ->whereNotIn('sale_status', ['cancelled']);
 
+            $startDt = null;
+            $endDt = null;
             if ($start && $end) {
-                $query->whereBetween('created_at', [
-                    \Carbon\Carbon::parse($start)->format('Y-m-d H:i:s'),
-                    \Carbon\Carbon::parse($end)->format('Y-m-d H:i:s')
-                ]);
+                $startCarbon = \Carbon\Carbon::parse($start);
+                $endCarbon   = \Carbon\Carbon::parse($end);
+
+                // If user selected the same timestamp or minute, or dates without full range:
+                if ($startCarbon->equalTo($endCarbon) || ($startCarbon->isSameDay($endCarbon) && $startCarbon->format('H:i') === $endCarbon->format('H:i'))) {
+                    // Expand to the full day so user gets all sales for that date
+                    $startCarbon = $startCarbon->copy()->startOfDay();
+                    $endCarbon   = $endCarbon->copy()->endOfDay();
+                } elseif (strlen($end) === 10) {
+                    $endCarbon   = $endCarbon->copy()->endOfDay();
+                }
+
+                $startDt = $startCarbon->format('Y-m-d H:i:s');
+                $endDt   = $endCarbon->format('Y-m-d H:i:s');
+
+                $query->whereBetween('created_at', [$startDt, $endDt]);
             }
 
             if ($request->filled('user_id')) {
@@ -1507,9 +1522,7 @@ class ReportingController extends Controller
             $expenseQueryV1 = DB::table('expense_vouchers');
             $expenseQueryV2 = DB::table('voucher_masters')->where('voucher_type', 'expense');
 
-            if ($start && $end) {
-                $startDt = \Carbon\Carbon::parse($start)->format('Y-m-d H:i:s');
-                $endDt   = \Carbon\Carbon::parse($end)->format('Y-m-d H:i:s');
+            if ($startDt && $endDt) {
                 $expenseQueryV1->whereBetween('entry_date', [$startDt, $endDt]);
                 $expenseQueryV2->whereBetween('date', [$startDt, $endDt]);
             }
