@@ -270,12 +270,30 @@
 
     {{-- Stats Row --}}
     <div class="row g-3 mb-4">
-        <div class="col-12 col-sm-6 col-md-4">
+        <div class="col-12 col-sm-4">
             <div class="vendor-stat-card">
                 <div class="vendor-stat-icon"><i class="fas fa-store"></i></div>
                 <div>
                     <div class="vendor-stat-val">{{ count($vendors) }}</div>
                     <div class="vendor-stat-lbl">Total Vendors</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-4">
+            <div class="vendor-stat-card">
+                <div class="vendor-stat-icon" style="background: #eff6ff; color: #2563eb;"><i class="fas fa-boxes"></i></div>
+                <div>
+                    <div class="vendor-stat-val">{{ $vendors->where('type', '!=', 'stitching')->count() }}</div>
+                    <div class="vendor-stat-lbl">Normal Suppliers</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-4">
+            <div class="vendor-stat-card">
+                <div class="vendor-stat-icon" style="background: #f5f3ff; color: #7c3aed;"><i class="fas fa-cut"></i></div>
+                <div>
+                    <div class="vendor-stat-val">{{ $vendors->where('type', 'stitching')->count() }}</div>
+                    <div class="vendor-stat-lbl">Stitching / Tailors</div>
                 </div>
             </div>
         </div>
@@ -302,6 +320,7 @@
                     <tr>
                         <th class="text-center" style="width: 60px;">#</th>
                         <th class="text-start">Vendor Name</th>
+                        <th class="text-start">Type</th>
                         <th class="text-start">Contact Phone</th>
                         <th class="text-start">Opening Balance</th>
                         <th class="text-start">Address</th>
@@ -319,6 +338,17 @@
                                     </div>
                                     <span class="fw-semibold text-dark">{{ $v->name }}</span>
                                 </div>
+                            </td>
+                            <td>
+                                @if(($v->type ?? 'normal') === 'stitching')
+                                    <span class="badge rounded-pill text-white px-2 py-1" style="background-color: #7c3aed; font-size: 0.76rem;">
+                                        <i class="fas fa-cut me-1"></i> Stitching
+                                    </span>
+                                @else
+                                    <span class="badge rounded-pill px-2 py-1" style="background-color: #e0e7ff; color: #3730a3; font-size: 0.76rem;">
+                                        <i class="fas fa-box me-1"></i> Normal
+                                    </span>
+                                @endif
                             </td>
                             <td>
                                 @if ($v->phone)
@@ -345,6 +375,7 @@
                             </td>
                             <!-- Hidden inputs for reliable JS edit -->
                             <input type="hidden" class="v-name" value="{{ $v->name }}">
+                            <input type="hidden" class="v-type" value="{{ $v->type ?? 'normal' }}">
                             <input type="hidden" class="v-phone" value="{{ $v->phone }}">
                             <input type="hidden" class="v-balance" value="{{ $v->opening_balance }}">
                             <input type="hidden" class="v-address" value="{{ $v->address }}">
@@ -369,6 +400,14 @@
                     </div>
 
                     <div class="vendor-mcard-details">
+                        <div>
+                            <i class="fas fa-tag me-2 text-muted"></i> <strong>Type:</strong> 
+                            @if(($v->type ?? 'normal') === 'stitching')
+                                <span class="badge rounded-pill text-white px-2 py-1" style="background-color: #7c3aed; font-size: 0.72rem;"><i class="fas fa-cut me-1"></i> Stitching</span>
+                            @else
+                                <span class="badge rounded-pill px-2 py-1" style="background-color: #e0e7ff; color: #3730a3; font-size: 0.72rem;"><i class="fas fa-box me-1"></i> Normal</span>
+                            @endif
+                        </div>
                         @if ($v->phone)
                             <div><i class="fas fa-phone me-2 text-primary"></i> <strong>Phone:</strong> {{ $v->phone }}</div>
                         @endif
@@ -393,6 +432,7 @@
 
                     <!-- Hidden inputs for mobile JS edit -->
                     <input type="hidden" class="v-name" value="{{ $v->name }}">
+                    <input type="hidden" class="v-type" value="{{ $v->type ?? 'normal' }}">
                     <input type="hidden" class="v-phone" value="{{ $v->phone }}">
                     <input type="hidden" class="v-balance" value="{{ $v->opening_balance }}">
                     <input type="hidden" class="v-address" value="{{ $v->address }}">
@@ -420,6 +460,14 @@
                     <div class="mb-3">
                         <label for="vname" class="form-label fw-semibold text-dark small">Vendor Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control px-3 py-2" name="name" id="vname" placeholder="Enter vendor name..." required style="border-radius: 10px; border: 1.5px solid #cbd5e1;" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="vtype" class="form-label fw-semibold text-dark small">Vendor Type <span class="text-danger">*</span></label>
+                        <select class="form-select px-3 py-2" name="type" id="vtype" required style="border-radius: 10px; border: 1.5px solid #cbd5e1; font-weight: 500;">
+                            <option value="normal">Normal Vendor (Supplier / Fabric / Accessories)</option>
+                            <option value="stitching">Stitching Vendor (Tailor / Master / Karigar)</option>
+                        </select>
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -476,6 +524,7 @@
         $('#btnAddVendor').click(function() {
             $('#vendorForm')[0].reset();
             $('#vendor_id').val('');
+            $('#vtype').val('normal');
             $('#modalTitle').html('<i class="fas fa-truck text-primary me-2"></i>New Vendor');
             $('#opening_balance').prop('readonly', false);
             $('#vendorModal').modal('show');
@@ -487,12 +536,14 @@
             const id = $(this).data('id');
 
             const name = $container.find('.v-name').val();
+            const type = $container.find('.v-type').val() || 'normal';
             const phone = $container.find('.v-phone').val();
             const balance = $container.find('.v-balance').val();
             const address = $container.find('.v-address').val();
 
             $('#vendor_id').val(id);
             $('#vname').val(name);
+            $('#vtype').val(type);
             $('#vphone').val(phone);
             $('#opening_balance').val(balance).prop('readonly', true);
             $('#vaddress').val(address);

@@ -66,6 +66,54 @@ class TransactionService
                 $changeToDeduct = (float) $sale->change;
             }
 
+            // Check if this sale is linked to a Customer Order delivery
+            $isDelivery = \Illuminate\Support\Str::startsWith($sale->invoice_no ?? '', 'DEL-')
+                || \Illuminate\Support\Str::contains($sale->reference ?? '', ['Customer Order', 'ORD-']);
+
+            $order = null;
+            if ($isDelivery) {
+                $order = \App\Models\CustomerOrder::where('sale_id', $sale->id)->first();
+                if (!$order && !empty($sale->reference)) {
+                    if (preg_match('/ORD-[A-Za-z0-9\-]+/i', $sale->reference, $m)) {
+                        $order = \App\Models\CustomerOrder::where('order_no', $m[0])->first();
+                    }
+                }
+            }
+
+            $customerName = $sale->customer ? ($sale->customer->customer_name ?? $sale->customer->name) : ($sale->walkin_name ?? ($order ? ($order->customer ? ($order->customer->customer_name ?? $order->customer->name) : $order->walkin_name) : null));
+            $orderNo = $order ? $order->order_no : null;
+            if (!$orderNo && !empty($sale->reference) && preg_match('/ORD-[A-Za-z0-9\-]+/i', $sale->reference, $m)) {
+                $orderNo = $m[0];
+            }
+
+            $deliveryExtra = '';
+            if ($isDelivery || $orderNo) {
+                $infoParts = [];
+                if ($orderNo) {
+                    $infoParts[] = "Customer Order #{$orderNo}";
+                } elseif (!empty($sale->reference)) {
+                    $infoParts[] = $sale->reference;
+                }
+                if ($customerName) {
+                    $infoParts[] = $customerName;
+                }
+                if (!empty($infoParts)) {
+                    $deliveryExtra = ' (' . implode(' - ', $infoParts) . ')';
+                }
+            }
+
+            $debitNarration = $isDelivery 
+                ? "Payment received from Delivery #{$sale->invoice_no}{$deliveryExtra}"
+                : "Payment received from Invoice #{$sale->invoice_no}";
+
+            $creditNarration = $isDelivery
+                ? "Payment for Delivery #{$sale->invoice_no}{$deliveryExtra}"
+                : "Payment for Invoice #{$sale->invoice_no}";
+
+            $remarks = $isDelivery
+                ? "Auto-Receipt for Delivery #{$sale->invoice_no}{$deliveryExtra}. Total: "
+                : "Auto-Receipt for Sale Invoice #{$sale->invoice_no}. Total: ";
+
             // 2. Prepare Debit Lines (Money In)
             foreach ($accountIds as $index => $accId) {
                 $amount = (float) ($amounts[$index] ?? 0);
@@ -84,7 +132,7 @@ class TransactionService
                             'account_id' => $accId,
                             'debit' => $amount,
                             'credit' => 0,
-                            'narration' => "Payment received from Invoice #{$sale->invoice_no}",
+                            'narration' => $debitNarration,
                         ];
                     }
                 }
@@ -115,18 +163,19 @@ class TransactionService
                 'account_id' => $creditAccountId,
                 'debit' => 0,
                 'credit' => $totalPaid,
-                'narration' => "Payment for Invoice #{$sale->invoice_no}",
+                'narration' => $creditNarration,
             ];
 
             // 4. Voucher Header
+            $effectiveCustomerId = $sale->customer_id ?? ($order ? $order->customer_id : null);
             $voucherData = [
                 'voucher_type' => VoucherMaster::TYPE_RECEIPT,
                 'date' => now()->format('Y-m-d'),
                 'status' => VoucherMaster::STATUS_POSTED, // Auto-post
-                'payment_from' => $sale->customer_id ? 'Customer' : 'Walk-in',
-                'party_type' => $sale->customer_id ? Customer::class : null,
-                'party_id' => $sale->customer_id,
-                'remarks' => "Auto-Receipt for Sale Invoice #{$sale->invoice_no}. Total: $totalPaid",
+                'payment_from' => $effectiveCustomerId ? 'Customer' : ('Walk-in' . ($customerName ? " ({$customerName})" : '')),
+                'party_type' => $effectiveCustomerId ? Customer::class : null,
+                'party_id' => $effectiveCustomerId,
+                'remarks' => $remarks . $totalPaid,
             ];
 
             // 5. Create via VoucherService

@@ -31,6 +31,11 @@ class CustomerOrderTest extends TestCase
             $user->givePermissionTo($perm);
         }
 
+        $permView = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'sales.view']);
+        if (!$user->hasPermissionTo('sales.view')) {
+            $user->givePermissionTo($permView);
+        }
+
         $perm = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'dashboard.view']);
         if (!$user->hasPermissionTo('dashboard.view')) {
             $user->givePermissionTo($perm);
@@ -108,7 +113,7 @@ class CustomerOrderTest extends TestCase
 
         $order = CustomerOrder::latest('id')->first();
         $this->assertNotNull($order);
-        $response->assertRedirect(route('customer_orders.index'));
+        $response->assertRedirect(route('customer_orders.print', $order->id));
 
         $this->assertEquals($customer->id, $order->customer_id);
         $this->assertEquals('pending', $order->status);
@@ -237,7 +242,7 @@ class CustomerOrderTest extends TestCase
             ['name' => 'Extra Golden Lace', 'amount' => 75, 'is_custom' => true],
         ];
 
-        $this->actingAs($user)
+        $response = $this->actingAs($user)
             ->post(route('customer_orders.store'), [
                 'order_no' => 'ORD-MAT-TEST-' . uniqid(),
                 'customer_mode' => 'existing',
@@ -251,10 +256,9 @@ class CustomerOrderTest extends TestCase
                 'qty' => [2],
                 'unit' => ['Pcs'],
                 'price' => [500],
-            ])
-            ->assertRedirect(route('customer_orders.index'));
-
+            ]);
         $order = CustomerOrder::latest('id')->first();
+        $response->assertRedirect(route('customer_orders.print', $order->id));
         $item = $order->items()->first();
 
         $this->assertNotNull($item);
@@ -298,10 +302,10 @@ class CustomerOrderTest extends TestCase
             ->get($prepareUrl)
             ->assertStatus(200)
             ->assertSee('Confirm Order Preparation #' . $order->order_no)
-            ->assertSee('Confirm In Preparing')
+            ->assertSee('Mark Ready')
             ->assertSee('orderMaterialsModal')
             ->assertSee('Materials')
-            ->assertSee('Raw Material / Service')
+            ->assertSee('Raw Material')
             ->assertSee('rawMaterialCategories')
             ->assertDontSee('Changes made here are saved only for this customer order');
 
@@ -324,7 +328,7 @@ class CustomerOrderTest extends TestCase
             ])
             ->assertRedirect(route('customer_orders.index'));
 
-        $this->assertEquals('in_progress', $order->fresh()->status);
+        $this->assertEquals('ready', $order->fresh()->status);
     }
 
     public function test_advance_and_payment_methods_work_across_create_edit_confirm_show_print(): void
@@ -359,7 +363,7 @@ class CustomerOrderTest extends TestCase
             ->assertSee('Payment Methods')
             ->assertSee('Add Account');
 
-        $this->actingAs($user)
+        $response = $this->actingAs($user)
             ->post(route('customer_orders.store'), [
                 'order_no' => 'ORD-PAY-' . uniqid(),
                 'customer_mode' => 'existing',
@@ -372,10 +376,9 @@ class CustomerOrderTest extends TestCase
                 'price' => [2000],
                 'payment_account_id' => [$account->id, null],
                 'payment_amount' => [300, 200],
-            ])
-            ->assertRedirect(route('customer_orders.index'));
-
+            ]);
         $order = CustomerOrder::latest('id')->first();
+        $response->assertRedirect(route('customer_orders.print', $order->id));
         $this->assertEquals(500.00, (float) $order->advance_amount);
         $this->assertCount(2, $order->payment_methods);
         $this->assertEquals($account->title, $order->payment_methods[0]['account_title']);
@@ -431,7 +434,7 @@ class CustomerOrderTest extends TestCase
 
         // 1. Create order with Rs 500 advance into $account
         $orderNo = 'ORD-LED-' . uniqid();
-        $this->actingAs($user)
+        $response = $this->actingAs($user)
             ->post(route('customer_orders.store'), [
                 'order_no' => $orderNo,
                 'customer_mode' => 'existing',
@@ -444,10 +447,10 @@ class CustomerOrderTest extends TestCase
                 'price' => [2500],
                 'payment_account_id' => [$account->id],
                 'payment_amount' => [500],
-            ])
-            ->assertRedirect(route('customer_orders.index'));
+            ]);
 
         $order = CustomerOrder::where('order_no', $orderNo)->firstOrFail();
+        $response->assertRedirect(route('customer_orders.print', $order->id));
 
         $debitEntry = \App\Models\JournalEntry::where('source_type', CustomerOrder::class)
             ->where('source_id', $order->id)
@@ -528,7 +531,7 @@ class CustomerOrderTest extends TestCase
         ]);
 
         $orderNo = 'ORD-DELIV-' . uniqid();
-        $this->actingAs($user)->post(route('customer_orders.store'), [
+        $response = $this->actingAs($user)->post(route('customer_orders.store'), [
             'order_no' => $orderNo,
             'customer_mode' => 'existing',
             'customer_id' => $customer->id,
@@ -545,9 +548,10 @@ class CustomerOrderTest extends TestCase
             'qty' => [1],
             'unit' => ['Pcs'],
             'price' => [5000],
-        ])->assertRedirect(route('customer_orders.index'));
+        ]);
 
         $order = CustomerOrder::where('order_no', $orderNo)->firstOrFail();
+        $response->assertRedirect(route('customer_orders.print', $order->id));
         // Total = 5000 - 200 = 4800. Advance = 1000. Remaining = 3800.
         $this->assertEquals(4800.00, (float) $order->total_amount);
         $this->assertEquals(1000.00, (float) $order->advance_amount);
@@ -574,6 +578,13 @@ class CustomerOrderTest extends TestCase
             ->get(route('customer_orders.index'))
             ->assertStatus(200)
             ->assertSee($fromOrderUrl);
+
+        // Verify direct delivery page /sales/from-order without ID renders properly with pending orders dropdown
+        $this->actingAs($user)
+            ->get(route('sales.from.order'))
+            ->assertStatus(200)
+            ->assertSee('SELECT UNDELIVERED ORDER')
+            ->assertSee('noDeliveryOrderPlaceholder');
 
         $this->actingAs($user)
             ->get(route('customer_orders.show', $order->id))
@@ -616,6 +627,15 @@ class CustomerOrderTest extends TestCase
             ->assertSee('Ali Raza (Brother)')
             ->assertSee('View Sale Invoice')
             ->assertSee($invoiceUrl);
+
+        // 5. Verify invoice and receipt load without any error
+        $this->actingAs($user)
+            ->get($invoiceUrl)
+            ->assertStatus(200);
+
+        $this->actingAs($user)
+            ->get(route('sales.receipt', $sale->id))
+            ->assertStatus(200);
     }
 
     public function test_delivering_order_via_pos_sale_bypasses_insufficient_stock_error(): void
@@ -700,5 +720,131 @@ class CustomerOrderTest extends TestCase
         $this->assertEquals('delivered', $order->status);
         $this->assertNotNull($order->sale_id);
         $this->assertEquals(2500, $order->delivery_payment_amount);
+
+        // Invoice view reflects Delivery title and Back button points to customer orders index
+        $this->actingAs($user)
+            ->get(route('sales.invoice', $order->sale_id))
+            ->assertStatus(200)
+            ->assertSee('Delivery Invoice')
+            ->assertSee(route('customer_orders.index'));
+
+        // Receipt view reflects ORDER DELIVERY RECEIPT and Back button points to customer orders index
+        $this->actingAs($user)
+            ->get(route('sales.receipt', $order->sale_id))
+            ->assertStatus(200)
+            ->assertSee('ORDER DELIVERY RECEIPT')
+            ->assertSee(route('customer_orders.index'));
+    }
+
+    public function test_preparing_order_with_raw_materials_deducts_warehouse_stock_and_logs_stock_movement(): void
+    {
+        $user = User::factory()->create();
+        $customer = Customer::create([
+            'customer_id' => 'CUST-STK-' . uniqid(),
+            'customer_name' => 'Stock Test Customer ' . uniqid(),
+            'mobile' => '03001234567',
+            'opening_balance' => 0,
+        ]);
+        $warehouse = \App\Models\Warehouse::first() ?? \App\Models\Warehouse::create(['warehouse_name' => 'Main Store']);
+
+        // Create a raw material with initial stock
+        $rawMaterial = Product::create([
+            'item_name' => 'Cotton Fabric ' . uniqid(),
+            'item_code' => 'RM-' . rand(1000, 9999),
+            'is_raw_material' => 1,
+            'is_active' => 1,
+            'purchase_price_per_piece' => 100,
+        ]);
+
+        \App\Models\WarehouseStock::create([
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $rawMaterial->id,
+            'total_pieces' => 10,
+            'quantity' => 10,
+        ]);
+
+        $this->assertEquals(10, \App\Models\WarehouseStock::where('product_id', $rawMaterial->id)->sum('total_pieces'));
+
+        // Create a customer order
+        $order = CustomerOrder::create([
+            'order_no' => 'ORD-STOCK-' . uniqid(),
+            'customer_id' => $customer->id,
+            'order_date' => now()->toDateString(),
+            'status' => 'pending',
+            'created_by' => $user->id,
+        ]);
+        $item = $order->items()->create([
+            'item_name' => 'Custom Shirt',
+            'qty' => 1,
+            'price' => 500,
+            'total' => 500,
+        ]);
+
+        // Prepare order with 3 units of raw material
+        $materials = [
+            [
+                'name' => $rawMaterial->item_name,
+                'product_id' => $rawMaterial->id,
+                'qty' => 3,
+                'unit' => 'meter',
+                'rate' => 100,
+                'amount' => 300,
+                'is_custom' => false,
+            ]
+        ];
+
+        $this->actingAs($user)->put(route('customer_orders.update', $order->id), [
+            'order_no' => $order->order_no,
+            'customer_mode' => 'existing',
+            'customer_id' => $customer->id,
+            'order_date' => now()->toDateString(),
+            'status' => 'in_progress',
+            'confirm_preparing' => '1',
+            'item_name' => [$item->item_name],
+            'product_id' => [null],
+            'qty' => [1],
+            'unit' => ['Pcs'],
+            'price' => [500],
+            'item_materials' => [json_encode($materials)],
+        ])->assertRedirect(route('customer_orders.index'));
+
+        // Assert stock was deducted: 10 - 3 = 7
+        $stockAfter = \App\Models\WarehouseStock::where('product_id', $rawMaterial->id)->sum('total_pieces');
+        $this->assertEquals(7, $stockAfter);
+
+        // Assert StockMovement 'out' was recorded
+        $movement = \App\Models\StockMovement::where('ref_type', 'CUSTOMER_ORDER')
+            ->where('ref_id', $order->id)
+            ->where('product_id', $rawMaterial->id)
+            ->first();
+        $this->assertNotNull($movement);
+        $this->assertEquals('out', $movement->type);
+        $this->assertEquals(-3, (float)$movement->qty);
+
+        // Assert /report/item-stock-fetch shows consumed quantity under sold
+        $stockPerm = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'item.stock.report.view']);
+        if (!$user->hasPermissionTo('item.stock.report.view')) {
+            $user->givePermissionTo($stockPerm);
+        }
+
+        $reportRes = $this->actingAs($user)->postJson(route('report.item_stock.fetch'), [
+            'category_id' => 'all',
+            'product_id' => $rawMaterial->id,
+            'warehouse_id' => 'all',
+            'unit_type' => 'all',
+            'report_mode' => 'ledger',
+        ])->assertStatus(200);
+
+        $reportData = $reportRes->json('data');
+        $this->assertNotEmpty($reportData);
+        $this->assertEquals(3, (float) $reportData[0]['sold']);
+        $this->assertEquals(7, (float) $reportData[0]['balance']);
+
+        // Cancel order -> Assert stock is restored
+        $this->actingAs($user)->post(route('customer_orders.status', $order->id), [
+            'status' => 'cancelled',
+        ]);
+        $stockRestored = \App\Models\WarehouseStock::where('product_id', $rawMaterial->id)->sum('total_pieces');
+        $this->assertEquals(10, $stockRestored);
     }
 }

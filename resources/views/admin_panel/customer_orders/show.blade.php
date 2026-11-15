@@ -189,11 +189,7 @@
                     </span>
                 </div>
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    @if ($order->status !== 'delivered' && $order->status !== 'cancelled')
-                        <a href="{{ route('sales.from.order', $order->id) }}" class="btn btn-sm btn-success fw-bold text-white shadow-sm">
-                            <i class="bi bi-truck me-1"></i> Deliver Order
-                        </a>
-                    @elseif ($order->sale_id)
+                    @if ($order->sale_id)
                         <a href="{{ route('sales.invoice', $order->sale_id) }}" target="_blank" class="btn btn-sm btn-outline-success fw-bold">
                             <i class="bi bi-file-earmark-text me-1"></i> View Sale Invoice
                         </a>
@@ -328,12 +324,28 @@
                                     @if (is_array($item->materials) && count($item->materials) > 0)
                                         <div class="d-flex flex-wrap gap-1 mt-1">
                                             @foreach ($item->materials as $mat)
-                                                <span class="badge {{ !empty($mat['is_custom']) ? 'bg-primary-subtle text-primary border border-primary-subtle' : 'bg-light text-dark border' }}" style="font-size: 11px; font-weight: 500;">
-                                                    {{ $mat['name'] ?: 'Material' }}: Rs {{ rtrim(rtrim(number_format((float)($mat['amount'] ?? 0), 2), '0'), '.') }}
-                                                    @if (!empty($mat['is_custom']))
-                                                        <span class="ms-1 fw-bold" style="font-size: 9.5px; text-transform: lowercase;">(customize)</span>
-                                                    @endif
-                                                </span>
+                                                @if (($mat['type'] ?? '') === 'stitching')
+                                                    <span class="badge text-white px-2 py-1" style="background-color: #7c3aed; font-size: 11px; font-weight: 500;">
+                                                        <i class="fas fa-cut me-1"></i>
+                                                        {{ !empty($mat['vendor_name']) ? ('Tailor: ' . $mat['vendor_name']) : ($mat['name'] ?: 'Stitching') }}
+                                                        @if(!empty($mat['qty']))
+                                                            ({{ rtrim(rtrim(number_format((float)$mat['qty'], 2), '0'), '.') }} {{ $mat['unit'] ?? 'Pcs' }})
+                                                        @endif
+                                                        : Rs {{ rtrim(rtrim(number_format((float)($mat['amount'] ?? 0), 2), '0'), '.') }}
+                                                    </span>
+                                                @else
+                                                    <span class="badge {{ !empty($mat['is_custom']) ? 'bg-primary-subtle text-primary border border-primary-subtle' : 'bg-light text-dark border' }}" style="font-size: 11px; font-weight: 500;">
+                                                        <i class="fas fa-box-open me-1 text-muted"></i>
+                                                        {{ $mat['name'] ?: 'Material' }}
+                                                        @if(!empty($mat['qty']))
+                                                            ({{ rtrim(rtrim(number_format((float)$mat['qty'], 2), '0'), '.') }} {{ $mat['unit'] ?? '' }})
+                                                        @endif
+                                                        : Rs {{ rtrim(rtrim(number_format((float)($mat['amount'] ?? 0), 2), '0'), '.') }}
+                                                        @if (!empty($mat['is_custom']))
+                                                            <span class="ms-1 fw-bold" style="font-size: 9.5px; text-transform: lowercase;">(customize)</span>
+                                                        @endif
+                                                    </span>
+                                                @endif
                                             @endforeach
                                         </div>
                                     @endif
@@ -389,7 +401,7 @@
                         </div>
                         <hr class="my-2 border-secondary">
                         <div class="row py-1 align-items-center">
-                            <div class="col-6 fw-bold fs-5 text-primary">Estimated Total</div>
+                            <div class="col-6 fw-bold fs-5 text-primary">Total</div>
                             <div class="col-6 text-end fw-bold fs-5 text-primary">Rs {{ number_format($order->total_amount, 2) }}</div>
                         </div>
                         @php
@@ -516,11 +528,7 @@
             </form>
 
             <div class="d-flex flex-wrap gap-2">
-                @if ($order->status !== 'delivered' && $order->status !== 'cancelled')
-                    <a href="{{ route('sales.from.order', $order->id) }}" class="btn btn-success fw-bold text-white shadow-sm">
-                        <i class="bi bi-truck me-1"></i> Deliver Order
-                    </a>
-                @elseif ($order->sale_id)
+                @if ($order->sale_id)
                     <a href="{{ route('sales.invoice', $order->sale_id) }}" target="_blank" class="btn btn-outline-success fw-bold">
                         <i class="bi bi-file-earmark-text me-1"></i> View Sale Invoice
                     </a>

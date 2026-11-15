@@ -21,12 +21,17 @@ class VendorController extends Controller
     // Store or update vendor information
     public function store(Request $request)
     {
+        $data = $request->all();
+        if (empty($data['type'])) {
+            $data['type'] = 'normal';
+        }
+
         if ($request->id) {
             // Update existing vendor (prevent balance update)
-            Vendor::findOrFail($request->id)->update($request->except('opening_balance'));
+            Vendor::findOrFail($request->id)->update(collect($data)->except('opening_balance')->toArray());
         } else {
             // Create a new vendor and ledger entry
-            $vendor = Vendor::create($request->all());
+            $vendor = Vendor::create($data);
 
             // Create ledger entry
             VendorLedger::create([

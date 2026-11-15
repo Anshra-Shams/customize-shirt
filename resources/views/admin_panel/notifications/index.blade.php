@@ -17,24 +17,41 @@
                                 @foreach ($notifications as $notification)
                                     <div class="list-group-item {{ $notification->is_read ? '' : 'bg-light' }}"
                                         data-id="{{ $notification->id }}">
-                                        <div class="d-flex w-100 justify-content-between">
-                                            <h5 class="mb-1">
-                                                @if ($notification->type === 'critical')
-                                                    <span class="badge badge-danger">Critical</span>
+                                        <div class="d-flex w-100 justify-content-between align-items-center">
+                                            @php
+                                                $titleLower = strtolower($notification->title ?? '');
+                                                $isDelivery = str_contains($titleLower, 'delivery') || $notification->source_type === 'App\\Models\\CustomerOrder';
+                                                $isRaw = str_contains($titleLower, 'raw material');
+                                            @endphp
+                                            <h5 class="mb-1 d-flex align-items-center gap-2">
+                                                @if ($isDelivery)
+                                                    <span class="badge {{ $notification->type === 'critical' ? 'badge-danger' : 'badge-success' }}"><i class="fas fa-truck me-1"></i> Delivery</span>
+                                                @elseif($isRaw)
+                                                    <span class="badge badge-warning text-dark"><i class="fas fa-boxes me-1"></i> Raw Material</span>
+                                                @elseif ($notification->type === 'critical')
+                                                    <span class="badge badge-danger"><i class="fas fa-exclamation-triangle me-1"></i> Critical</span>
                                                 @elseif($notification->type === 'warning')
-                                                    <span class="badge badge-warning">Warning</span>
+                                                    <span class="badge badge-warning text-dark"><i class="fas fa-exclamation-circle me-1"></i> Warning</span>
                                                 @else
-                                                    <span class="badge badge-info">Info</span>
+                                                    <span class="badge badge-info"><i class="fas fa-info-circle me-1"></i> Info</span>
                                                 @endif
-                                                {{ $notification->title }}
+                                                <span>{{ $notification->title }}</span>
                                             </h5>
-                                            <small>{{ $notification->created_at->diffForHumans() }}</small>
+                                            <small class="text-muted">{{ $notification->created_at->diffForHumans() }}</small>
                                         </div>
-                                        <p class="mb-1">{{ $notification->message }}</p>
+                                        <p class="mb-2 text-dark">{{ $notification->message }}</p>
                                         <div class="d-flex justify-content-between align-items-center">
                                             @if ($notification->action_url)
                                                 <a href="{{ $notification->action_url }}"
-                                                    class="btn btn-sm btn-outline-primary">View Details</a>
+                                                    class="btn btn-sm btn-outline-primary fw-bold">
+                                                    @if ($isDelivery)
+                                                        <i class="fas fa-truck me-1"></i> Open Delivery
+                                                    @elseif($isRaw)
+                                                        <i class="fas fa-boxes me-1"></i> View Raw Materials
+                                                    @else
+                                                        <i class="fas fa-external-link-alt me-1"></i> View Details
+                                                    @endif
+                                                </a>
                                             @else
                                                 <span></span>
                                             @endif

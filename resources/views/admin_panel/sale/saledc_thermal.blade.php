@@ -196,9 +196,18 @@
 
 <body>
 
+    @php
+        $isOrderDelivery = ($sale->customerOrder ?? false)
+            || str_contains($sale->reference ?? '', 'Customer Order')
+            || str_contains($sale->reference ?? '', 'ORD-')
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists()
+            || request('from') === 'order';
+        $backUrl = $isOrderDelivery ? route('customer_orders.index') : route('sale.index');
+    @endphp
+
     <div class="print-controls no-print">
         <a href="javascript:window.print()" class="btn btn-primary">🖨️ Print DC</a>
-        <a href="{{ route('sale.index') }}" class="btn btn-secondary">← Back</a>
+        <a href="{{ $backUrl }}" class="btn btn-secondary">← Back</a>
     </div>
 
     <div class="receipt-container">

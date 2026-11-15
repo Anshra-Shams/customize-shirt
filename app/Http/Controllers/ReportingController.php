@@ -13,13 +13,22 @@ class ReportingController extends Controller
 {
     public function onhand()
     {
-        $rows = Product::leftJoin('v_stock_onhand as soh', 'soh.product_id', '=', 'products.id')
+        $rows = Product::where(function ($q) {
+                $q->where('products.is_raw_material', 1)->orWhere('products.is_part', 1);
+            })
+            ->leftJoin('v_stock_onhand as soh', 'soh.product_id', '=', 'products.id')
             ->leftJoin('brands', 'brands.id', '=', 'products.brand_id')
+            ->leftJoin('categories', 'categories.id', '=', 'products.category_id')
             ->leftJoin('units', 'units.id', '=', 'products.unit_id')
             ->selectRaw('
                 products.id,
                 products.item_code,
                 products.item_name,
+                products.is_part,
+                products.is_assembled,
+                products.is_raw_material,
+                products.is_active,
+                COALESCE(categories.name, "") as category_name,
                 COALESCE(brands.name, "") as brand_name,
                 COALESCE(units.name, "") as unit_name,
                 COALESCE(soh.onhand_qty, 0) as onhand_qty
@@ -27,7 +36,7 @@ class ReportingController extends Controller
             ->orderBy('products.item_name')
             ->get();
 
-        return view('admin_panel.Reporting.onhand', compact('rows'));
+        return view('admin_panel.reporting.onhand', compact('rows'));
     }
 
     public function item_stock_report()
@@ -191,6 +200,24 @@ class ReportingController extends Controller
                 if ($dateTo)   $adjQuery->whereDate('created_at', '<=', $dateTo);
                 $adjList = $adjQuery->select('qty', 'note')->get();
 
+                // Consumed raw materials / assemblies in customer orders or out movements
+                $varConsumedQuery = DB::table('stock_movements')
+                    ->where('product_id', $product->id)
+                    ->where(function ($q) {
+                        $q->where('ref_type', 'CUSTOMER_ORDER')
+                          ->orWhere('type', 'assembly_out')
+                          ->orWhere(function ($sub) {
+                              $sub->where('type', 'out')
+                                  ->whereNotIn('ref_type', ['sale', 'SO', 'PURCHASE_EDIT']);
+                          });
+                    });
+                if ($warehouseId && $warehouseId !== 'all') {
+                    $varConsumedQuery->where('warehouse_id', $warehouseId);
+                }
+                if ($dateFrom) $varConsumedQuery->whereDate('created_at', '>=', $dateFrom);
+                if ($dateTo)   $varConsumedQuery->whereDate('created_at', '<=', $dateTo);
+                $varConsumedList = $varConsumedQuery->select('qty', 'note')->get();
+
                 $saleIds = $returnsList->pluck('sale_id')->unique()->toArray();
                 $saleItemsMap = [];
                 if (!empty($saleIds)) {
@@ -259,6 +286,16 @@ class ReportingController extends Controller
                         if ($this->matchSaleItemToVariant($sItem, $v)) {
                             $sold += (float) $sItem->total_pieces;
                             $saleAmount += (float) $sItem->total;
+                        }
+                    }
+
+                    // Consumed in customer orders or assembly for variant
+                    $vPurchPrice = (float) ($v['purch_price'] ?? $productPurchPrice);
+                    foreach ($varConsumedList as $cItem) {
+                        if ($this->matchAdjustmentToVariant($cItem, $v) || count($parsedVariants) === 1) {
+                            $cQty = abs((float) $cItem->qty);
+                            $sold += $cQty;
+                            $saleAmount += $cQty * $vPurchPrice;
                         }
                     }
 
@@ -357,7 +394,7 @@ class ReportingController extends Controller
 
                 [$purchased, $purchaseAmount] = $this->getPurchasedQtyAndNetAmount($product->id, ['from' => $dateFrom, 'to' => $dateTo], $warehouseId);
 
-                // Sold qty & amount
+                // Sold qty & amount (POS / Sales)
                 $saleStatsQuery = DB::table('sale_items')->where('product_id', $product->id);
                 if ($warehouseId && $warehouseId !== 'all') $saleStatsQuery->where('warehouse_id', $warehouseId);
                 if ($dateFrom) $saleStatsQuery->whereDate('created_at', '>=', $dateFrom);
@@ -366,6 +403,29 @@ class ReportingController extends Controller
 
                 $sold       = (float) $saleStats->total_qty;
                 $saleAmount = (float) $saleStats->total_amount;
+
+                // Materials consumed in Customer Orders / Assembly / Outward movements
+                $consumedQuery = DB::table('stock_movements')
+                    ->where('product_id', $product->id)
+                    ->where(function ($q) {
+                        $q->where('ref_type', 'CUSTOMER_ORDER')
+                          ->orWhere('type', 'assembly_out')
+                          ->orWhere(function ($sub) {
+                              $sub->where('type', 'out')
+                                  ->whereNotIn('ref_type', ['sale', 'SO', 'PURCHASE_EDIT']);
+                          });
+                    });
+                if ($warehouseId && $warehouseId !== 'all') {
+                    $consumedQuery->where('warehouse_id', $warehouseId);
+                }
+                if ($dateFrom) $consumedQuery->whereDate('created_at', '>=', $dateFrom);
+                if ($dateTo)   $consumedQuery->whereDate('created_at', '<=', $dateTo);
+
+                $consumedQty = abs((float) $consumedQuery->sum('qty'));
+                $consumedAmount = $consumedQty * $productPurchPrice;
+
+                $sold       += $consumedQty;
+                $saleAmount += $consumedAmount;
 
                 // Returned qty
                 $retQuery = DB::table('stock_movements')
@@ -543,6 +603,9 @@ class ReportingController extends Controller
                         $note = "Initial Stock (Variant: " . (float)$matchedVariantStock . " Units | Total Product: " . (float)$qty . " Units)";
                         $qty = (float)$matchedVariantStock;
                     }
+                } elseif ($m->ref_type === 'CUSTOMER_ORDER') {
+                    $typeBadge = 'danger';
+                    $typeLabel = 'ORDER USED (-)';
                 } elseif ($m->type === 'in' || $m->type === 'assembly_in') {
                     $typeBadge = 'success';
                     $typeLabel = 'INWARD (+)';
@@ -576,7 +639,7 @@ class ReportingController extends Controller
 
     public function profit_loss_report()
     {
-        $products = Product::orderBy('item_name')->get();
+        $products = Product::where('is_raw_material', 0)->where('is_part', 0)->orderBy('item_name')->get();
         $categories = Category::orderBy('name')->get();
         $customers = DB::table('customers')->orderBy('customer_name')->get();
 
@@ -604,7 +667,7 @@ class ReportingController extends Controller
         $categoryId = $request->category_id;
         $customerId = $request->customer_id;
 
-        $productsQuery = Product::query();
+        $productsQuery = Product::query()->where('is_raw_material', 0)->where('is_part', 0);
         if ($productId && $productId !== 'all') {
             $productsQuery->where('id', $productId);
         }
@@ -745,8 +808,10 @@ class ReportingController extends Controller
                     $soldQty = 0;
                     $soldQtyPieces = 0;
                     $soldAmount = 0;
+                    $isDefaultVariantFallback = count($parsedVariants) === 1 || !empty($v['is_base_variant']);
+
                     foreach ($salesList as $sItem) {
-                        if ($this->matchSaleItemToVariant($sItem, $v)) {
+                        if ($this->matchSaleItemToVariant($sItem, $v, $isDefaultVariantFallback)) {
                             $soldQty += (float) $sItem->qty;
                             $soldQtyPieces += (float) $sItem->total_pieces;
                             
@@ -771,7 +836,7 @@ class ReportingController extends Controller
                             'qty' => $rItem->qty,
                             'color' => $rColor
                         ];
-                        if ($this->matchSaleItemToVariant($rItemCopy, $v)) {
+                        if ($this->matchSaleItemToVariant($rItemCopy, $v, $isDefaultVariantFallback)) {
                             $returnedQtyPieces += (float) $rItem->qty;
                             $returnedAmount += (float) $rItem->line_total;
                         }
@@ -1330,8 +1395,13 @@ class ReportingController extends Controller
                     }
                 }
 
+                $isDelivery = \Illuminate\Support\Str::startsWith($sale->invoice_no ?? '', 'DEL-')
+                    || \Illuminate\Support\Str::contains($sale->reference ?? '', ['Customer Order', 'ORD-']);
+
                 return [
                     'id' => $sale->id,
+                    'invoice_no' => $sale->invoice_no ?: ('INVSLE-' . $sale->id),
+                    'is_delivery' => $isDelivery,
                     'reference' => $sale->reference ?? '-',
                     'product' => $productNames,      // Names
                     'product_code' => $productCodes, // Codes
@@ -1647,7 +1717,7 @@ class ReportingController extends Controller
 
     public function vendor_ledger_report()
     {
-        $vendors = DB::table('vendors')->select('id', 'name')->orderBy('name')->get();
+        $vendors = DB::table('vendors')->select('id', 'name', 'type')->orderBy('name')->get();
 
         return view('admin_panel.reporting.vendor_ledger_report', compact('vendors'));
     }
@@ -1655,20 +1725,29 @@ class ReportingController extends Controller
     public function fetch_vendor_ledger(Request $request)
     {
         $vendorId = $request->vendor_id;
+        $vendorType = $request->vendor_type;
         $start = $request->start_date ?: '2000-01-01';
         $end = $request->end_date ?: date('Y-m-d');
 
         $balanceService = app(\App\Services\BalanceService::class);
 
-        // If "all" or empty, fetch for ALL vendors
+        // If "all" or empty, fetch for ALL vendors (optionally filtered by vendor_type)
         if (!$vendorId || $vendorId === 'all') {
+            $vendorQuery = \App\Models\Vendor::query();
+            if ($vendorType && $vendorType !== 'all') {
+                $vendorQuery->where('type', $vendorType);
+            }
+            $targetVendorIds = $vendorQuery->pluck('id')->toArray();
+
             $vendorIds = \App\Models\JournalEntry::where('party_type', \App\Models\Vendor::class)
+                ->whereIn('party_id', $targetVendorIds)
                 ->distinct()
                 ->pluck('party_id')
                 ->toArray();
 
             // Also include vendors with opening balance
-            $obVendorIds = \App\Models\Vendor::where('opening_balance', '>', 0)
+            $obVendorIds = \App\Models\Vendor::whereIn('id', $targetVendorIds)
+                ->where('opening_balance', '>', 0)
                 ->pluck('id')
                 ->toArray();
 
@@ -1680,7 +1759,9 @@ class ReportingController extends Controller
 
             foreach ($allIds as $vid) {
                 $ledgerData = $balanceService->getVendorLedger($vid, $start, $end);
-                $vendorName = $ledgerData['vendor']->name ?? 'Unknown';
+                $vendorObj = $ledgerData['vendor'] ?? null;
+                $vendorName = $vendorObj->name ?? 'Unknown';
+                $vendorTypeVal = $vendorObj->type ?? 'normal';
                 $totalOpening += $ledgerData['opening_balance'];
 
                 foreach ($ledgerData['transactions'] as $row) {
@@ -1718,6 +1799,7 @@ class ReportingController extends Controller
                         'invoice' => $ref,
                         'description' => $desc,
                         'vendor_name' => $vendorName,
+                        'vendor_type' => $vendorTypeVal,
                         'debit' => $row['debit'] ?? 0,
                         'credit' => $row['credit'] ?? 0,
                         'balance' => $row['balance'] ?? 0,
@@ -1739,8 +1821,18 @@ class ReportingController extends Controller
                 $t['balance'] = $running;
             }
 
+            $displayName = 'All Vendors';
+            if ($vendorType === 'stitching') {
+                $displayName = 'All Stitching Vendors / Tailors';
+            } elseif ($vendorType === 'normal') {
+                $displayName = 'All Normal Vendors';
+            }
+
             return response()->json([
-                'vendor' => (object)['name' => 'All Vendors'],
+                'vendor' => (object)[
+                    'name' => $displayName,
+                    'type' => $vendorType ?: 'all',
+                ],
                 'opening_balance' => $totalOpening,
                 'closing_balance' => $totalClosing,
                 'transactions' => $allTransactions,
@@ -1817,9 +1909,27 @@ class ReportingController extends Controller
         $balanceService = app(\App\Services\BalanceService::class);
 
         // 1. Current Assets
-        // Cash in Hand (head_id = 1)
-        // Cash at Bank (Usually head_id = 1, we can split them if we can identify them, but we'll show all assets)
-        $assetAccounts = DB::table('accounts')->whereIn('head_id', [1, 2])->get();
+        // Cash in Hand & Bank Accounts
+        $controlAccountIds = [
+            $balanceService->getAccountsReceivableId(),
+            $balanceService->getAccountsPayableId(),
+            $balanceService->getSalesRevenueId(),
+            $balanceService->getPurchaseExpenseId(),
+        ];
+
+        $assetAccounts = DB::table('accounts')
+            ->leftJoin('account_heads', 'account_heads.id', '=', 'accounts.head_id')
+            ->whereNotIn('accounts.id', $controlAccountIds)
+            ->where(function ($q) {
+                $q->whereIn('accounts.head_id', [1, 2, 13])
+                    ->orWhereIn(DB::raw('LOWER(account_heads.name)'), ['bank', 'cash', 'asset', 'current asset', 'current assets'])
+                    ->orWhere('accounts.title', 'like', '%cash%')
+                    ->orWhere('accounts.title', 'like', '%bank%')
+                    ->orWhere('accounts.account_code', 'like', '%CASH%')
+                    ->orWhere('accounts.account_code', 'like', '%BANK%');
+            })
+            ->select('accounts.*')
+            ->get();
         $cashAccounts = [];
         $totalCashBank = 0;
 
@@ -1850,7 +1960,7 @@ class ReportingController extends Controller
         }
 
         // Stock in Trade
-        // Current Stock = Initial + Purchased - Sold
+        // Current Stock = Initial + Purchased - Sold (including raw materials consumed in orders)
         $products = DB::table('products')->get();
         $totalInventory = 0;
         foreach ($products as $p) {
@@ -1873,6 +1983,16 @@ class ReportingController extends Controller
                 ->first();
 
             $sold = (float) $saleStats->total_qty;
+
+            // Also include raw materials consumed in Customer Orders
+            $orderUsed = (float) DB::table('stock_movements')
+                ->where('product_id', $p->id)
+                ->where('type', 'out')
+                ->where('ref_type', 'CUSTOMER_ORDER')
+                ->where('created_at', '<=', $dateEnd)
+                ->sum('qty');
+
+            $sold += $orderUsed;
 
             $balance = $initial + $purchased - $sold;
 
@@ -2534,11 +2654,11 @@ class ReportingController extends Controller
     /**
      * Match a sale item to a specific variant based on size and color stored in color field.
      */
-    private function matchSaleItemToVariant($saleItem, $variant)
+    private function matchSaleItemToVariant($saleItem, $variant, $isDefaultFallback = false)
     {
         $itemColor = $saleItem->color;
         if (empty($itemColor)) {
-            return false;
+            return $isDefaultFallback;
         }
 
         $itemVariant = [];

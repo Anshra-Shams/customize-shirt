@@ -124,6 +124,9 @@
     }
 
     function addNewRow() {
+        if (typeof isDeliveryMode !== 'undefined' && isDeliveryMode) {
+            return;
+        }
         const isWholesale = lastSelectedPriceMode === 'wholesale';
         const btnText = isWholesale ? 'W' : 'R';
         const btnClass = isWholesale ? 'btn-outline-info' : 'btn-outline-success';
@@ -584,9 +587,10 @@
         let ok = false;
         $('#salesTableBody tr').each(function() {
             const pid = $(this).find('.product-id-hidden').val();
-            const cartons = parseInt($(this).find('.carton-qty').val()) || 0;
-            const loose   = parseInt($(this).find('.loose-pcs-input').val()) || 0;
-            if (pid && (cartons > 0 || loose > 0)) {
+            const isManual = $(this).find('.is-manual').val() === '1';
+            const cartons = parseFloat($(this).find('.carton-qty').val()) || 0;
+            const loose   = parseFloat($(this).find('.loose-pcs-input').val()) || 0;
+            if ((pid || isManual) && (cartons > 0 || loose > 0)) {
                 ok = true;
                 return false;
             }
@@ -599,7 +603,7 @@
         $('#btnPosted, #btnHeaderPosted').prop('disabled', !state);
     }
 
-    function ensureSaved() {
+    function ensureSaved(suppressAlert = false) {
         return new Promise(function(resolve, reject) {
             const existing = $('#booking_id').val();
             let url = '{{ route('sales.store') }}';
@@ -609,18 +613,20 @@
                 method = 'PUT';
             }
 
-            $('#btnSave, #btnHeaderPosted, #btnPosted').prop('disabled', true);
+            $('#btnSave, #btnHeaderPosted, #btnPosted, #btnSaveAndComplete, #btnSaveAndComplete2, #btnHeaderSaveSale').prop('disabled', true);
 
             $.ajax({
                 url: url,
                 type: method,
                 data: serializeForm(),
                 success: function(res) {
-                    $('#btnSave, #btnHeaderPosted, #btnPosted').prop('disabled', false);
+                    $('#btnSave, #btnHeaderPosted, #btnPosted, #btnSaveAndComplete, #btnSaveAndComplete2, #btnHeaderSaveSale').prop('disabled', false);
                     if (res?.ok) {
                         const bid = res.booking_id || existing;
                         $('#booking_id').val(bid);
-                        Swal.fire('Saved', 'Sale saved successfully', 'success');
+                        if (!suppressAlert) {
+                            Swal.fire('Saved', (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? 'Delivery recorded successfully' : 'Sale saved successfully', 'success');
+                        }
                         resolve(bid);
                     } else {
                         Swal.fire('Error', res.msg || 'Save failed', 'error');
@@ -628,7 +634,7 @@
                     }
                 },
                 error: function(xhr) {
-                    $('#btnSave, #btnHeaderPosted, #btnPosted').prop('disabled', false);
+                    $('#btnSave, #btnHeaderPosted, #btnPosted, #btnSaveAndComplete, #btnSaveAndComplete2, #btnHeaderSaveSale').prop('disabled', false);
                     let errMsg = 'Save error';
                     if (xhr.responseJSON && xhr.responseJSON.message) {
                         errMsg = xhr.responseJSON.message;
@@ -655,12 +661,13 @@
                     window.open(res.invoice_url, '_blank');
                     Swal.fire({
                         title: 'Success!',
-                        text: 'Posted & invoice opened',
+                        text: (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? 'Order Delivered & Invoice Opened' : 'Posted & invoice opened',
                         icon: 'success',
                         timer: 2000,
                         showConfirmButton: false
                     });
-                    setTimeout(() => window.location.href = "{{ route('sale.index') }}", 2000);
+                    const redirectUrl = (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? "{{ route('customer_orders.index') }}" : "{{ route('sale.index') }}";
+                    setTimeout(() => window.location.href = redirectUrl, 2000);
                 } else {
                     Swal.fire('Post Failed', res.msg || 'Post failed', 'error');
                 }
@@ -696,14 +703,19 @@
     }
 
     function cleanupEmptyRows() {
+        if (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) {
+            // Never remove delivery rows in delivery mode
+            return;
+        }
         $('#salesTableBody tr').each(function() {
             const $r = $(this);
             const prod = $r.find('.product-id-hidden').val();
+            const isManual = $r.find('.is-manual').val() === '1';
             const wh = $r.find('.warehouse').val();
-            const cartons = parseInt($r.find('.carton-qty').val()) || 0;
-            const loose   = parseInt($r.find('.loose-pcs-input').val()) || 0;
+            const cartons = parseFloat($r.find('.carton-qty').val()) || 0;
+            const loose   = parseFloat($r.find('.loose-pcs-input').val()) || 0;
             const qty = cartons + loose;
-            if ((qty <= 0) || ((!prod || prod === '') && (!wh || wh === ''))) {
+            if ((qty <= 0) || ((!prod || prod === '') && !isManual && (!wh || wh === ''))) {
                 if ($('#salesTableBody tr').length > 1) {
                     $r.remove();
                 } else {
@@ -724,6 +736,17 @@
         let ok = true;
         let firstMessage = null;
         let firstEl = null;
+
+        if (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) {
+            const orderId = $('#customer_order_id').val();
+            if (!orderId) {
+                return {
+                    ok: false,
+                    firstMessage: 'Please select an undelivered order to deliver.',
+                    firstEl: $('#pendingOrderSelect')
+                };
+            }
+        }
 
         const isWalkin = $('#walkinToggle').is(':checked');
 
@@ -761,30 +784,40 @@
         let firstMessage = null;
         let firstEl = null;
 
-        $('#salesTableBody tr').each(function(rowIndex) {
+        const $rows = $('#salesTableBody tr').not('#noDeliveryOrderPlaceholder');
+        if ($rows.length === 0) {
+            return {
+                ok: false,
+                firstMessage: (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? 'Please select an undelivered order to deliver items.' : 'Please add at least one item.',
+                firstEl: (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? $('#pendingOrderSelect') : $('#salesTableBody')
+            };
+        }
+
+        $rows.each(function(rowIndex) {
             const $row = $(this);
             const $wh = $row.find('.warehouse');
             const $prod = $row.find('.product');
             const $cartonQtyInput = $row.find('.carton-qty');
             const $loosePcsInput = $row.find('.loose-pcs-input');
             const hiddenPid = $row.find('.product-id-hidden').val();
+            const isManual = $row.find('.is-manual').val() === '1';
             const prodVal = $prod.val();
 
             if (!$wh.val()) {
                 $wh.val("{{ auth()->user()->warehouse_id ?? 1 }}");
             }
 
-            // If this row has no product selected:
-            if (!prodVal && !hiddenPid) {
+            // If this row has no product selected and is not manual:
+            if (!prodVal && !hiddenPid && !isManual) {
                 // If there are other items in the table, remove this unselected row automatically
-                if ($('#salesTableBody tr').length > 1) {
+                if ($rows.length > 1) {
                     $row.remove();
                     return;
                 }
                 ok = false;
                 if (!firstMessage) {
                     firstMessage = 'Bara-e-karam sale mein item select karein (Row ' + (rowIndex + 1) + ')';
-                    firstEl = $prod;
+                    firstEl = $prod.length ? $prod : $row;
                 }
                 markInvalid($prod);
                 return;
@@ -872,6 +905,10 @@
 
     // Walk-in Toggle Logic
     $('#walkinToggle').on('change', function() {
+        if (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) {
+            if (typeof updateGrandTotals === 'function') updateGrandTotals();
+            return;
+        }
         const isWalkin = $(this).is(':checked');
         if (isWalkin) {
             $('#customerSelect').addClass('d-none').next('.select2-container').addClass('d-none');
@@ -904,7 +941,9 @@
         });
         
         // Ensure rvWrapper is in the right place on load
-        if ($('#walkinToggle').is(':checked')) {
+        if (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) {
+            // Delivery mode layout is self-contained
+        } else if ($('#walkinToggle').is(':checked')) {
             $('#rvWrapper').appendTo('#walkinReceiptsContainer');
             $('#totalsSection').removeClass('col-lg-5').addClass('col-lg-12');
             $('#receiptVouchersSection').hide();
@@ -1246,94 +1285,102 @@
             updateGrandTotals();
         });
 
-        // Buttons: Booking (Save)
-        $('#btnSave').off('click').on('click', function() {
+        function submitSaleOrDelivery(actionType) {
+            actionType = actionType || 'sale';
+            $('#action').val(actionType);
             cleanupEmptyRows();
             updateGrandTotals();
             refreshPostedState();
 
             const v = validateFormAll();
             if (!v.ok) {
-                showAlert('warning', v.message);
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Action Required',
+                    text: v.message,
+                    confirmButtonColor: '#16a34a'
+                });
                 if (v.el && v.el.length) {
                     v.el.focus();
                     if (v.el.hasClass('js-customer')) v.el.select2?.('open');
                 }
                 return;
             }
-            $('#action').val('booking');
-            ensureSaved();
+
+            if (actionType === 'sale') {
+                // Walk-in 100% Payment Validation Check
+                const isWalkin = $('#walkinToggle').is(':checked');
+                const invoiceNet = toNum($('#totalBalance').val());
+                const paidNow = toNum($('#receiptsTotal').text());
+                const orderAdvance = toNum($('#orderAdvanceAmountHidden').val());
+
+                if (isWalkin) {
+                    // For walk-in, they must pay 100% upfront (with a small floating point tolerance)
+                    // If converted from an order, orderAdvance was already collected at order time
+                    if ((paidNow + orderAdvance) < (invoiceNet - 0.05)) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: '100% Payment Required',
+                            text: 'Walk-in customers do not have a ledger. You must receive full payment to post this sale.',
+                            confirmButtonColor: '#d33'
+                        });
+                        return;
+                    }
+                }
+
+                // Credit Limit Check
+                const rangeBal = toNum($('#rangeBalance').val());
+                if (rangeBal > 0) {
+                    const prevBal = toNum($('#previousBalance').val());
+                    const invoiceNet = toNum($('#totalBalance').val());
+                    const paidNow = toNum($('#receiptsTotal').text());
+                    const projectedBalance = prevBal + invoiceNet - paidNow;
+
+                    if (projectedBalance > rangeBal) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Credit Limit Exceeded',
+                            html: `Projected Balance (<strong>${projectedBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>) exceeds Credit Limit (<strong>${rangeBal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>)`,
+                            confirmButtonColor: '#d33'
+                        });
+                        return;
+                    }
+                }
+
+                if (!canPost()) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'No Items',
+                        text: (typeof window.isDeliveryMode !== 'undefined' && window.isDeliveryMode) ? 'Please select an undelivered order to deliver.' : 'No valid item lines to post.',
+                        confirmButtonColor: '#16a34a'
+                    });
+                    return;
+                }
+
+                ensureSaved(true).then(postNow);
+            } else {
+                ensureSaved();
+            }
+        }
+
+        // Buttons: Booking (Save)
+        $('#btnSave').off('click').on('click', function(e) {
+            e.preventDefault();
+            submitSaleOrDelivery('booking');
         });
 
-        // Buttons: Sale (Post)
-        $('#btnPosted, #btnHeaderPosted').off('click').on('click', function() {
-            $('#action').val('sale');
-            cleanupEmptyRows();
-            updateGrandTotals();
-            refreshPostedState();
+        // Buttons: Sale (Post / Deliver)
+        $(document).off('click', '#btnPosted, #btnHeaderPosted, #btnSaveAndComplete, #btnSaveAndComplete2, #btnHeaderSaveSale')
+            .on('click', '#btnPosted, #btnHeaderPosted, #btnSaveAndComplete, #btnSaveAndComplete2, #btnHeaderSaveSale', function(e) {
+                e.preventDefault();
+                submitSaleOrDelivery('sale');
+            });
 
-            const v = validateFormAll();
-            if (!v.ok) {
-                showAlert('warning', v.message);
-                if (v.el && v.el.length) {
-                    v.el.focus();
-                    if (v.el.hasClass('js-customer')) v.el.select2?.('open');
-                }
-                return;
+        $(document).off('keydown', '.f9-submit-handler').on('keydown', function(e) {
+            if (e.key === 'F9') {
+                e.preventDefault();
+                submitSaleOrDelivery('sale');
             }
-
-            // Walk-in 100% Payment Validation Check
-            const isWalkin = $('#walkinToggle').is(':checked');
-            const invoiceNet = toNum($('#totalBalance').val());
-            const paidNow = toNum($('#receiptsTotal').text());
-            const orderAdvance = toNum($('#orderAdvanceAmountHidden').val());
-
-            if (isWalkin) {
-                // For walk-in, they must pay 100% upfront (with a small floating point tolerance)
-                // If converted from an order, orderAdvance was already collected at order time
-                if ((paidNow + orderAdvance) < (invoiceNet - 0.05)) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: '100% Payment Required',
-                        text: 'Walk-in customers do not have a ledger. You must receive full payment to post this sale.',
-                        confirmButtonColor: '#d33'
-                    });
-                    return;
-                }
-            }
-
-            // Credit Limit Check
-            // Credit Limit Check
-            const rangeBal = toNum($('#rangeBalance').val());
-            if (rangeBal > 0) {
-                const prevBal = toNum($('#previousBalance').val());
-
-                // Invoice Net Amount (Subtotal - Extra Discount)
-                const invoiceNet = toNum($('#totalBalance').val());
-                // Amount Paid Now
-                const paidNow = toNum($('#receiptsTotal').text());
-
-                // Projected Balance: Previous + New Debt - Payment
-                const projectedBalance = prevBal + invoiceNet - paidNow;
-
-                // Validate
-                if (projectedBalance > rangeBal) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Credit Limit Exceeded',
-                        html: `Projected Balance (<strong>${projectedBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>) exceeds Credit Limit (<strong>${rangeBal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>)`,
-                        confirmButtonColor: '#d33'
-                    });
-                    return;
-                }
-            }
-
-            if (!canPost()) {
-                showAlert('warning', 'No valid item lines to post.');
-                return;
-            }
-
-            ensureSaved().then(postNow);
         });
 
         // Receipts Logic
@@ -1448,17 +1495,7 @@
             });
         });
 
-        // --- Save & Complete (F9) Handler ---
-        $('#btnSaveAndComplete, #btnHeaderSaveSale').on('click', function() {
-            $('#btnPosted').trigger('click');
-        });
 
-        $(document).on('keydown', function(e) {
-            if (e.key === 'F9') {
-                e.preventDefault();
-                $('#btnSaveAndComplete').trigger('click');
-            }
-        });
 
         /* =========================================
            BARCODE SCANNER INTEGRATION (Variant / Product)

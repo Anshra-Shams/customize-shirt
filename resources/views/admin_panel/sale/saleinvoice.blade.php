@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice - {{ $sale->invoice_no }}</title>
+    <title>{{ ($sale->customerOrder || str_contains($sale->reference ?? '', 'Customer Order')) ? 'Delivery Invoice' : 'Invoice' }} - {{ $sale->invoice_no }}</title>
     <!-- Bootstrap for grid and utilities -->
     <link href="{{ asset('assets/vendors/bootstrap5/css/bootstrap.min.css') }}" rel="stylesheet">
 
@@ -375,18 +375,32 @@
 
 <body>
 
+    @php
+        $isOrderDelivery = ($sale->customerOrder ?? false)
+            || str_contains($sale->reference ?? '', 'Customer Order')
+            || str_contains($sale->reference ?? '', 'ORD-')
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists()
+            || request('from') === 'order';
+        $backUrl = $isOrderDelivery ? route('customer_orders.index') : route('sale.index');
+    @endphp
+
     <!-- Print / Action Buttons -->
-    <div class="print-btn-container no-print">
-        <button onclick="window.print()" class="btn btn-primary btn-sm shadow fw-bold">
+    <div class="print-btn-container no-print d-flex gap-2 align-items-center">
+        <button onclick="window.print()" class="btn btn-primary btn-sm shadow fw-bold d-flex align-items-center">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-                class="bi bi-printer-fill me-2" viewBox="0 0 16 16">
+                class="bi bi-printer-fill me-1" viewBox="0 0 16 16">
                 <path
                     d="M0 9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V9zm4-6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2H4V3z" />
                 <path d="M2.5 14.5A1.5 1.5 0 0 1 1 13V9a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v4a1.5 1.5 0 0 1-1.5 1.5h-13z" />
             </svg>
             Print
         </button>
-        <a href="{{ route('sale.index') }}" class="btn btn-secondary btn-sm shadow ms-2 fw-bold">Back</a>
+        <a href="{{ route('sales.receipt', $sale->id) }}?from=pos" class="btn btn-success btn-sm shadow fw-bold d-flex align-items-center" target="_blank">
+            <i class="fas fa-receipt me-1"></i> Thermal Print
+        </a>
+        <a href="{{ $backUrl }}" class="btn btn-secondary btn-sm shadow fw-bold d-flex align-items-center">
+            <i class="fas fa-arrow-left me-1"></i> Back
+        </a>
     </div>
 
     <!-- ========================================== -->
@@ -410,7 +424,10 @@
         </div>
         @endif
 
-        <div class="invoice-title">{{ ($isEstimate ?? false) ? 'Estimate' : 'Sales Invoice' }}</div>
+        @php
+            $isOrderDelivery = $sale->customerOrder || str_contains($sale->reference ?? '', 'Customer Order');
+        @endphp
+        <div class="invoice-title">{{ ($isEstimate ?? false) ? 'Estimate' : ($isOrderDelivery ? 'Delivery Invoice' : 'Sales Invoice') }}</div>
 
         <!-- Info Grid -->
         @if(!($isEstimate ?? false))
@@ -733,8 +750,22 @@
                             $grossTotal  = collect($saleItems)->sum('total');
                             $totalDisc   = collect($saleItems)->sum('discount_amount');
                             $netBill     = $sale->total_net;          // after extra discount
+
+                            $linkedOrder = $sale->customerOrder ?: \App\Models\CustomerOrder::where('sale_id', $sale->id)->first();
+                            $orderAdvance = 0;
+                            $orderDeliveryPaid = 0;
+                            if ($linkedOrder) {
+                                $orderAdvance = (float)($linkedOrder->advance_amount ?? 0);
+                                $orderDeliveryPaid = (float)($linkedOrder->delivery_payment_amount ?? 0);
+                            }
+
                             $paidAmount  = (float)($sale->cash ?? 0);
-                            $finalBal    = $previousBalance + $netBill - $paidAmount;
+                            if ($paidAmount <= 0 && $linkedOrder) {
+                                $paidAmount = $orderAdvance + $orderDeliveryPaid;
+                            }
+
+                            $finalPayable = $netBill - $exchangeReturnedAmount;
+                            $finalBal     = $previousBalance + $finalPayable - $paidAmount;
                         @endphp
 
                         @if ($totalDisc > 0)
@@ -776,17 +807,37 @@
                                 </td>
                             </tr>
                         @endif
+                        @if ($orderAdvance > 0)
+                        <tr>
+                            <td class="text-muted">Order Advance</td>
+                            <td class="text-end text-success">{{ number_format($orderAdvance, 2) }}</td>
+                        </tr>
+                        @php
+                            $deliveryCollected = max(0, $paidAmount - $orderAdvance);
+                        @endphp
+                        @if ($deliveryCollected > 0)
+                        <tr>
+                            <td class="text-muted">Paid at Delivery</td>
+                            <td class="text-end text-success">{{ number_format($deliveryCollected, 2) }}</td>
+                        </tr>
+                        @endif
+                        <tr>
+                            <td class="fw-bold">Total Paid</td>
+                            <td class="text-end fw-bold text-success">{{ number_format($paidAmount, 2) }}</td>
+                        </tr>
+                        @else
                         <tr>
                             <td>Paid</td>
                             <td class="text-end text-success">{{ number_format($paidAmount, 2) }}</td>
                         </tr>
+                        @endif
                         @php
                             $finalBal = $previousBalance + $finalPayable - $paidAmount;
                         @endphp
                         <tr class="closing-bal">
                             <td class="fw-bold text-dark py-2">Closing Balance</td>
                             <td class="text-end fw-bold text-dark py-2">
-                                {{ number_format(abs($finalBal), 2) }} <span class="text-muted" style="font-size: 11px;">{{ $finalBal >= 0 ? 'Dr' : 'Cr' }}</span>
+                                {{ number_format(abs($finalBal), 2) }} <span class="text-muted" style="font-size: 11px;">{{ round($finalBal, 2) == 0 ? '' : ($finalBal > 0 ? 'Dr' : 'Cr') }}</span>
                             </td>
                         </tr>
                     </table>
@@ -837,7 +888,11 @@
         </div>
         @endif
 
+        @if ($isOrderDelivery)
+        <div class="policy-banner" style="background:#10b981; color:#fff; font-weight:bold; font-size:12px; letter-spacing:0.5px;">ORDER DELIVERY RECEIPT</div>
+        @else
         <div class="policy-banner">No Return, Only Exchange in 3 days</div>
+        @endif
 
         <div class="divider"></div>
 
@@ -847,7 +902,7 @@
         @endphp
         <div class="meta-grid">
             <div class="meta-row">
-                <span class="meta-label">Invoice #:</span>
+                <span class="meta-label">{{ $isOrderDelivery ? 'Delivery #:' : 'Invoice #:' }}</span>
                 <span class="meta-value">{{ $sale->invoice_no }}</span>
             </div>
             <div class="meta-row">
@@ -1045,9 +1100,15 @@
                 <span>{{ number_format(abs($previousBalance), 0) }} {{ $previousBalance >= 0 ? 'Dr' : 'Cr' }}</span>
             </div>
             @endif
+            @if(isset($orderAdvance) && $orderAdvance > 0)
+            <div class="tot-row">
+                <span>Order Advance:</span>
+                <span>{{ number_format($orderAdvance, 0) }}</span>
+            </div>
+            @endif
             <div class="tot-row">
                 <span>Paid Amount:</span>
-                <span>{{ number_format($sale->cash, 0) }}</span>
+                <span>{{ number_format($paidAmount, 0) }}</span>
             </div>
             @if($sale->change > 0)
             <div class="tot-row">
@@ -1058,11 +1119,11 @@
 
             @if(!$isWalkin)
             @php
-                $finalBalance = $previousBalance + $sale->total_net - $sale->cash;
+                $finalBalance = $previousBalance + $sale->total_net - $paidAmount;
             @endphp
             <div class="tot-row closing-bal">
                 <span>CLOSING BALANCE:</span>
-                <span>{{ number_format(abs($finalBalance), 0) }} {{ $finalBalance >= 0 ? 'Dr' : 'Cr' }}</span>
+                <span>{{ number_format(abs($finalBalance), 0) }} {{ round($finalBalance, 2) == 0 ? '' : ($finalBalance > 0 ? 'Dr' : 'Cr') }}</span>
             </div>
             @endif
         </div>

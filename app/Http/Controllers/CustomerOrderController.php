@@ -9,6 +9,10 @@ use App\Models\CustomerLedger;
 use App\Models\CustomerOrder;
 use App\Models\CustomerOrderItem;
 use App\Models\Product;
+use App\Models\StockMovement;
+use App\Models\Vendor;
+use App\Models\VendorLedger;
+use App\Models\WarehouseStock;
 use App\Services\BalanceService;
 use App\Services\JournalEntryService;
 use Illuminate\Http\Request;
@@ -130,7 +134,19 @@ class CustomerOrderController extends Controller
 
         $statuses = CustomerOrder::STATUSES;
 
-        return compact('customers', 'products', 'rawMaterials', 'rawMaterialCategories', 'accounts', 'statuses');
+        $stitchingVendors = Vendor::where('type', 'stitching')->orderBy('name')->get();
+        $allVendors = Vendor::orderBy('name')->get();
+
+        return compact(
+            'customers',
+            'products',
+            'rawMaterials',
+            'rawMaterialCategories',
+            'accounts',
+            'statuses',
+            'stitchingVendors',
+            'allVendors'
+        );
     }
 
     /**
@@ -162,17 +178,24 @@ class CustomerOrderController extends Controller
                 $order->created_by = auth()->id();
 
                 $this->fillOrderHeader($order, $validated, $request);
+                if ($request->boolean('confirm_preparing')) {
+                    $order->status = 'ready';
+                }
                 $order->save();
 
                 $this->syncOrderItems($order, $request);
+                $this->syncOrderMaterialsStock($order);
                 $this->syncAdvanceJournalEntries($order);
                 $this->syncCustomerLedgerAdvance($order);
+                $this->syncStitchingVendorJournalEntries($order);
+
+                \App\Models\SystemNotification::createDeliveryNotification($order, 'booked');
 
                 return $order;
             });
 
             return redirect()
-                ->route('customer_orders.index')
+                ->route('customer_orders.print', $order->id)
                 ->with('success', "Order #{$order->order_no} saved successfully.");
         } catch (\Exception $e) {
             return redirect()
@@ -293,21 +316,47 @@ class CustomerOrderController extends Controller
                 }
 
                 $this->fillOrderHeader($order, $validated, $request);
+                if ($request->boolean('confirm_preparing')) {
+                    $order->status = 'ready';
+                }
                 $order->save();
 
                 $this->syncOrderItems($order, $request);
+                $this->syncOrderMaterialsStock($order);
                 $this->syncAdvanceJournalEntries($order);
                 $this->syncCustomerLedgerAdvance($order);
+                $this->syncStitchingVendorJournalEntries($order);
+
+                if ($order->status === 'ready') {
+                    \App\Models\SystemNotification::createDeliveryNotification($order, 'ready');
+                } elseif ($order->status === 'delivered' || $order->status === 'cancelled') {
+                    \App\Models\SystemNotification::resolveOrderNotifications($order->id);
+                }
             });
 
             $message = $request->boolean('confirm_preparing')
-                ? "Order #{$order->order_no} confirmed as In Preparing."
+                ? "Order #{$order->order_no} confirmed and marked as Ready."
                 : "Order #{$order->order_no} updated successfully.";
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'order' => $order
+                ]);
+            }
 
             return redirect()
                 ->route('customer_orders.index')
                 ->with('success', $message);
         } catch (\Exception $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to update order: ' . $e->getMessage()
+                ], 422);
+            }
+
             return redirect()
                 ->back()
                 ->withInput()
@@ -325,6 +374,7 @@ class CustomerOrderController extends Controller
         ]);
 
         $order = CustomerOrder::findOrFail($id);
+        $oldStatus = $order->status;
         $order->status = $request->status;
 
         if ($request->status === 'delivered') {
@@ -337,6 +387,17 @@ class CustomerOrderController extends Controller
         }
 
         $order->save();
+
+        if ($request->status === 'cancelled') {
+            $this->reverseOrderMaterialsStock($order);
+            \App\Models\SystemNotification::resolveOrderNotifications($order->id);
+        } elseif ($request->status === 'delivered') {
+            \App\Models\SystemNotification::resolveOrderNotifications($order->id);
+        } elseif ($request->status === 'ready') {
+            \App\Models\SystemNotification::createDeliveryNotification($order, 'ready');
+        } elseif ($oldStatus === 'cancelled' && in_array($request->status, ['in_progress', 'ready', 'delivered'])) {
+            $this->syncOrderMaterialsStock($order);
+        }
 
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json([
@@ -371,6 +432,8 @@ class CustomerOrderController extends Controller
         DB::transaction(function () use ($order) {
             $this->journalService->reverseEntriesForSource($order);
             CustomerLedger::where('description', 'like', "%Order #{$order->order_no}%")->delete();
+            $this->reverseOrderMaterialsStock($order);
+            \App\Models\SystemNotification::where('source_type', 'App\Models\CustomerOrder')->where('source_id', $order->id)->delete();
             $order->delete();
         });
 
@@ -654,6 +717,105 @@ class CustomerOrderController extends Controller
     }
 
     /**
+     * Synchronize stitching vendor charges to Journal Entries and Vendor Ledgers.
+     * Records Accounts Payable (Credit) for each assigned stitching vendor so their
+     * ledger reflects that we owe them for stitching this order.
+     */
+    private function syncStitchingVendorJournalEntries(CustomerOrder $order): void
+    {
+        $order->load('items');
+        $apId = $this->balanceService->getAccountsPayableId();
+        $entryDate = $order->order_date ? $order->order_date->format('Y-m-d') : now()->format('Y-m-d');
+
+        // Stitching Expense account for balanced double-entry
+        $stitchingExpenseAcc = Account::where('account_code', 'STITCH_EXP')
+            ->orWhere('title', 'like', '%Stitching%')
+            ->first();
+
+        if (!$stitchingExpenseAcc) {
+            $purchaseExp = Account::where('account_code', 'PURCHASE')->first();
+            $stitchingExpenseAcc = Account::create([
+                'title' => 'Stitching Expense',
+                'account_code' => 'STITCH_EXP',
+                'head_id' => $purchaseExp ? $purchaseExp->head_id : 3, // Expense
+                'status' => 1,
+            ]);
+        }
+
+        $vendorTotals = []; // [vendor_id => ['vendor' => $v, 'amount' => 0.0, 'items' => []]]
+
+        foreach ($order->items as $item) {
+            $materials = is_array($item->materials) ? $item->materials : [];
+            foreach ($materials as $mat) {
+                if (($mat['type'] ?? '') !== 'stitching') {
+                    continue;
+                }
+                $vendorId = !empty($mat['vendor_id']) ? (int) $mat['vendor_id'] : null;
+                $amount = is_numeric($mat['amount'] ?? null) ? round((float) $mat['amount'], 2) : 0.0;
+
+                if ($vendorId && $amount > 0) {
+                    if (!isset($vendorTotals[$vendorId])) {
+                        $vendorTotals[$vendorId] = [
+                            'vendor' => Vendor::find($vendorId),
+                            'amount' => 0.0,
+                            'items' => [],
+                        ];
+                    }
+                    $vendorTotals[$vendorId]['amount'] += $amount;
+                    $vendorTotals[$vendorId]['items'][] = $item->item_name;
+                }
+            }
+        }
+
+        foreach ($vendorTotals as $vendorId => $data) {
+            $vendor = $data['vendor'];
+            if (!$vendor || $data['amount'] <= 0) {
+                continue;
+            }
+
+            $itemNames = implode(', ', array_unique($data['items']));
+            $desc = "Stitching charges for Customer Order #{$order->order_no}" . ($itemNames ? " ({$itemNames})" : '');
+
+            // 1. Debit Stitching Expense Account
+            if ($stitchingExpenseAcc) {
+                $this->journalService->recordEntry(
+                    $order,
+                    $stitchingExpenseAcc->id,
+                    $data['amount'], // Debit: Expense increases
+                    0,               // Credit
+                    $desc,
+                    $entryDate
+                );
+            }
+
+            // 2. Credit Accounts Payable Account (with party = Vendor)
+            // This is what getVendorLedger and getVendorBalance reads!
+            $this->journalService->recordEntry(
+                $order,
+                $apId,
+                0,               // Debit
+                $data['amount'], // Credit: We owe vendor (Payable increases)
+                $desc,
+                $entryDate,
+                $vendor          // Party = Vendor
+            );
+
+            // 3. Update legacy VendorLedger closing balance
+            $ledger = VendorLedger::firstOrCreate(
+                ['vendor_id' => $vendor->id],
+                [
+                    'admin_or_user_id' => auth()->id() ?? 1,
+                    'opening_balance' => 0,
+                    'previous_balance' => 0,
+                    'closing_balance' => 0,
+                ]
+            );
+            $ledger->closing_balance = $this->balanceService->getVendorBalance($vendor->id);
+            $ledger->save();
+        }
+    }
+
+    /**
      * Replace order items and recalculate order totals without touching inventory or accounting.
      */
     private function syncOrderItems(CustomerOrder $order, Request $request): void
@@ -745,20 +907,139 @@ class CustomerOrderController extends Controller
             if (!is_array($item)) {
                 continue;
             }
+            $type = $item['type'] ?? (!empty($item['vendor_id']) || !empty($item['vendor_name']) ? 'stitching' : 'material');
             $name = trim((string) ($item['name'] ?? ''));
+            if ($type === 'stitching' && empty($name)) {
+                $name = !empty($item['vendor_name']) ? ('Stitching - ' . $item['vendor_name']) : 'Stitching';
+            }
             $amount = is_numeric($item['amount'] ?? null) ? round((float) $item['amount'], 2) : 0.0;
-            if ($name === '' && $amount == 0.0) {
+            $qty = is_numeric($item['qty'] ?? null) ? round((float) $item['qty'], 2) : 1.0;
+            if ($qty <= 0) {
+                $qty = 1.0;
+            }
+            $unit = trim((string) ($item['unit'] ?? 'Pcs'));
+            $unitPrice = is_numeric($item['unit_price'] ?? null) 
+                ? round((float) $item['unit_price'], 2) 
+                : (is_numeric($item['rate'] ?? null) ? round((float) $item['rate'], 2) : 0.0);
+            $rate = $unitPrice;
+
+            if ($name === '' && $amount == 0.0 && $qty == 0.0) {
                 continue;
             }
             $clean[] = [
+                'type' => $type,
                 'name' => $name,
                 'amount' => $amount,
+                'qty' => $qty,
+                'unit' => $unit ?: 'Pcs',
+                'rate' => $rate,
+                'unit_price' => $unitPrice,
                 'category_id' => !empty($item['category_id']) ? (int) $item['category_id'] : null,
                 'product_id' => !empty($item['product_id']) ? (int) $item['product_id'] : null,
+                'vendor_id' => !empty($item['vendor_id']) ? (int) $item['vendor_id'] : null,
+                'vendor_name' => !empty($item['vendor_name']) ? trim((string) $item['vendor_name']) : null,
                 'is_custom' => !empty($item['is_custom']),
             ];
         }
 
         return $clean;
+    }
+
+    /**
+     * Synchronize raw material stock deduction for Customer Orders.
+     * When materials are assigned/prepared, deduct raw material stock from WarehouseStock
+     * and log StockMovement ('out'). If materials change or order is updated, reverse previous
+     * deductions first to maintain exact stock balance.
+     */
+    private function syncOrderMaterialsStock(CustomerOrder $order): void
+    {
+        // 1. First reverse any existing stock deductions for this order
+        $this->reverseOrderMaterialsStock($order);
+
+        // If order is cancelled, do not deduct stock
+        if ($order->status === 'cancelled') {
+            return;
+        }
+
+        // 2. Fetch fresh items with materials
+        $order->load('items');
+
+        $now = now();
+        $warehouseId = 1; // Default Main Store
+
+        foreach ($order->items as $orderItem) {
+            $materials = is_array($orderItem->materials) ? $orderItem->materials : [];
+            foreach ($materials as $mat) {
+                if (($mat['type'] ?? '') === 'stitching') {
+                    continue; // Skip stitching services from inventory stock deduction
+                }
+                $productId = !empty($mat['product_id']) ? (int) $mat['product_id'] : null;
+                $qty = is_numeric($mat['qty'] ?? null) ? (float) $mat['qty'] : 0.0;
+
+                if (!$productId || $qty <= 0) {
+                    continue;
+                }
+
+                $product = Product::find($productId);
+                if (!$product) {
+                    continue;
+                }
+
+                $matName = $mat['name'] ?? $product->item_name;
+                $ppb = (float) ($product->pieces_per_box > 0 ? $product->pieces_per_box : 1);
+
+                // Find or create WarehouseStock in warehouse
+                $whStock = WarehouseStock::firstOrNew([
+                    'warehouse_id' => $warehouseId,
+                    'product_id' => $productId,
+                ]);
+
+                $whStock->total_pieces = (float) ($whStock->total_pieces ?? 0) - $qty;
+                $whStock->quantity = $whStock->total_pieces / $ppb;
+                $whStock->save();
+
+                // Record StockMovement ('out')
+                StockMovement::create([
+                    'product_id' => $productId,
+                    'type' => 'out',
+                    'qty' => -1 * abs($qty),
+                    'ref_type' => 'CUSTOMER_ORDER',
+                    'ref_id' => $order->id,
+                    'note' => "Material consumed for Order #{$order->order_no} ({$orderItem->item_name} -> {$matName})",
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Reverse any raw material stock deductions previously made for this customer order.
+     */
+    private function reverseOrderMaterialsStock(CustomerOrder $order): void
+    {
+        $movements = StockMovement::where('ref_type', 'CUSTOMER_ORDER')
+            ->where('ref_id', $order->id)
+            ->get();
+
+        $warehouseId = 1;
+
+        foreach ($movements as $mov) {
+            $product = Product::find($mov->product_id);
+            $ppb = (float) ($product && $product->pieces_per_box > 0 ? $product->pieces_per_box : 1);
+            $qtyDeducted = abs((float) $mov->qty);
+
+            $whStock = WarehouseStock::where('warehouse_id', $warehouseId)
+                ->where('product_id', $mov->product_id)
+                ->first();
+
+            if ($whStock) {
+                $whStock->total_pieces = (float) ($whStock->total_pieces ?? 0) + $qtyDeducted;
+                $whStock->quantity = $whStock->total_pieces / $ppb;
+                $whStock->save();
+            }
+
+            $mov->delete();
+        }
     }
 }

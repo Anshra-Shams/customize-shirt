@@ -354,7 +354,7 @@
             border-color: #2563eb !important;
             box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1) !important;
         }
-    <style>
+
         /* 💎 SCREENSHOT POS 3-COLUMN LAYOUT SYSTEM 💎 */
         .pos-product-card {
             background: #ffffff;
@@ -459,9 +459,21 @@
             font-size: 0.95rem;
         }
 
-        @if (isset($fromOrder) && $fromOrder)
+        @php
+            $isDelivery = $isDelivery ?? (isset($fromOrder) && $fromOrder) ?? request()->routeIs('sales.from.order') ?? request()->is('sales/from-order*');
+        @endphp
+
+        @if ($isDelivery)
+        .sales-table {
+            min-width: 100% !important;
+            width: 100% !important;
+        }
         .col-stock, .col-size, .col-color, .col-pieces {
             display: none !important;
+        }
+        .col-product {
+            width: auto !important;
+            min-width: 250px !important;
         }
         @endif
 
@@ -504,149 +516,249 @@
                 @csrf
                 <input type="hidden" id="booking_id" name="booking_id" value="">
                 <input type="hidden" id="action" name="action" value="sale">
-                @if (isset($fromOrder) && $fromOrder)
-                    <input type="hidden" name="customer_order_id" id="customer_order_id" value="{{ $fromOrder->id }}">
-                    <input type="hidden" id="orderAdvanceAmountHidden" name="order_advance_amount" value="{{ $fromOrder->advance_amount }}">
-                    <div class="alert alert-success d-flex justify-content-between align-items-center py-2 px-3 mb-2 shadow-sm rounded-3">
+                @if ($isDelivery)
+                    {{-- TOP HEADER BAR (Delivery Mode) --}}
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
                         <div class="d-flex align-items-center gap-2">
-                            <i class="fas fa-truck text-success fs-5"></i>
+                            <a href="{{ route('customer_orders.index') }}" class="btn btn-sm btn-light border rounded-circle shadow-sm" title="Back to Orders">
+                                <i class="fas fa-arrow-left text-secondary"></i>
+                            </a>
                             <div>
-                                <strong class="text-success">Delivering Customer Order #{{ $fromOrder->order_no }}</strong>
-                                <span class="text-dark fw-bold ms-2">&mdash; {{ $fromOrder->customer_display_name }}</span>
-                                <span class="badge bg-light text-dark border ms-2">Order Total: Rs {{ number_format($fromOrder->total_amount, 2) }}</span>
-                                @if ($fromOrder->advance_amount > 0)
-                                    <span class="badge bg-success text-white ms-1">Advance Received: Rs {{ number_format($fromOrder->advance_amount, 2) }}</span>
-                                    <span class="badge bg-danger text-white ms-1">Balance Due: Rs {{ number_format(max(0, $fromOrder->total_amount - $fromOrder->advance_amount), 2) }}</span>
-                                @endif
-                                <div class="small text-dark mt-1">
-                                    <span class="text-muted fw-bold">Order Items:</span>
-                                    @foreach ($fromOrder->items as $oItem)
-                                        <span class="badge bg-white text-dark border ms-1">{{ $oItem->item_name }} &times; {{ rtrim(rtrim(number_format($oItem->qty, 2), '0'), '.') }} {{ $oItem->unit }}</span>
-                                    @endforeach
-                                </div>
+                                <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2" style="font-size: 1.05rem;">
+                                    <span class="badge bg-success p-2 rounded-3 text-white"><i class="fas fa-truck"></i></span>
+                                    <span>Order Delivery & Dispatch</span>
+                                </h5>
+                                <small class="text-muted" style="font-size: 0.72rem;">Deliver customer order, receive balance payment & dispatch delivery slip</small>
                             </div>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <a href="{{ route('customer_orders.show', $fromOrder->id) }}" class="btn btn-sm btn-outline-success fw-bold" target="_blank">
-                                <i class="fas fa-eye me-1"></i> View Order Slip
-                            </a>
+                            <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Calculator"><i class="fas fa-calculator"></i></button>
+                            <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+                            <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Fullscreen" onclick="document.documentElement.requestFullscreen()"><i class="fas fa-expand"></i></button>
+                        </div>
+                    </div>
+
+                    {{-- UNIFIED ORDER DELIVERY & CUSTOMER PANEL --}}
+                    <div class="card border-0 shadow-sm mb-2 rounded-3" style="background: #ffffff; border-top: 3px solid #16a34a !important;">
+                        <div class="card-body p-2 p-md-3">
+                            <div class="row g-2 align-items-center">
+                                
+                                {{-- 1. SELECT ORDER DROPDOWN --}}
+                                <div class="col-lg-4 col-md-5">
+                                    <label class="form-label fw-bold text-success mb-1 d-flex align-items-center gap-1" style="font-size: 0.78rem;">
+                                        <i class="fas fa-truck-loading text-success"></i> SELECT UNDELIVERED ORDER *
+                                    </label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text bg-success text-white border-success">
+                                            <i class="fas fa-box"></i>
+                                        </span>
+                                        <select class="form-select form-select-sm fw-bold border-success text-dark shadow-none" id="pendingOrderSelect" style="font-size: 0.82rem; height: 38px;">
+                                            <option value="">-- Choose Pending Order to Deliver --</option>
+                                            @if(isset($undeliveredOrders))
+                                                @foreach($undeliveredOrders as $uOrder)
+                                                    <option value="{{ $uOrder->id }}"
+                                                            data-customer-id="{{ $uOrder->customer_id ?? '' }}"
+                                                            data-walkin-name="{{ $uOrder->walkin_name ?? '' }}"
+                                                            {{ (isset($fromOrder) && $fromOrder && $fromOrder->id == $uOrder->id) ? 'selected' : '' }}>
+                                                        #{{ $uOrder->order_no }} &mdash; {{ $uOrder->customer_display_name }} (Rs {{ number_format($uOrder->total_amount, 2) }} | Bal: Rs {{ number_format(max(0, $uOrder->total_amount - $uOrder->advance_amount), 2) }})
+                                                    </option>
+                                                @endforeach
+                                            @endif
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {{-- 2. CUSTOMER & ORDER LIVE CARD --}}
+                                <div class="col-lg-5 col-md-4">
+                                    {{-- Active Order Loaded State --}}
+                                    <div id="deliveryCustomerCard" class="{{ (isset($fromOrder) && $fromOrder) ? '' : 'd-none' }}">
+                                        <div class="p-2 rounded-2 border border-success bg-light d-flex justify-content-between align-items-center flex-wrap gap-2 shadow-sm" style="min-height: 48px;">
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                    <span class="badge bg-success font-monospace" id="cardOrderBadge" style="font-size: 0.8rem;">
+                                                        Delivering Customer Order #{{ $fromOrder->order_no ?? '' }}
+                                                    </span>
+                                                    <span class="fw-bold text-dark" id="cardCustomerName" style="font-size: 0.92rem;">
+                                                        {{ $fromOrder->customer_display_name ?? '' }}
+                                                    </span>
+                                                    <span class="badge bg-white text-secondary border small" id="cardCustomerType">
+                                                        {{ (isset($fromOrder) && $fromOrder && $fromOrder->customer_id) ? 'Registered' : 'Walk-in' }}
+                                                    </span>
+                                                </div>
+                                                <div class="text-muted mt-1 small d-flex gap-3 flex-wrap" style="font-size: 0.72rem;">
+                                                    <span id="cardCustomerPhoneWrapper" class="{{ (isset($fromOrder) && $fromOrder && ($fromOrder->customer_phone || ($fromOrder->customer && $fromOrder->customer->mobile_no))) ? '' : 'd-none' }}">
+                                                        <i class="fas fa-phone-alt text-success me-1"></i><span id="cardCustomerPhone">{{ $fromOrder->customer_phone ?? ($fromOrder->customer->mobile_no ?? '') }}</span>
+                                                    </span>
+                                                    <span id="cardCustomerAddressWrapper" class="{{ (isset($fromOrder) && $fromOrder && ($fromOrder->customer_address || ($fromOrder->customer && $fromOrder->customer->address))) ? '' : 'd-none' }}">
+                                                        <i class="fas fa-map-marker-alt text-danger me-1"></i><span id="cardCustomerAddress">{{ $fromOrder->customer_address ?? ($fromOrder->customer->address ?? '') }}</span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <a href="{{ isset($fromOrder) && $fromOrder ? route('customer_orders.show', $fromOrder->id) : '#' }}" id="bannerViewOrderLink" class="btn btn-xs btn-outline-success fw-bold py-1 px-2" target="_blank" style="font-size: 0.72rem;">
+                                                    <i class="fas fa-eye me-1"></i> View Order Slip
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {{-- Empty State (No order selected) --}}
+                                    <div id="deliveryCustomerCardEmpty" class="{{ (isset($fromOrder) && $fromOrder) ? 'd-none' : '' }}">
+                                        <div class="p-2 rounded-2 border border-dashed border-secondary bg-light text-center text-muted d-flex align-items-center justify-content-center" style="min-height: 48px; font-size: 0.8rem;">
+                                            <span><i class="fas fa-info-circle me-1 text-success"></i> Please select a pending order to deliver.</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- 3. DELIVERY NO & DATE & SUBMIT --}}
+                                <div class="col-lg-3 col-md-3">
+                                    <div class="d-flex align-items-center justify-content-end gap-2">
+                                        <div>
+                                            <label class="form-label fw-bold text-secondary mb-0" style="font-size:0.68rem;">DELIVERY #</label>
+                                            <input type="text" class="form-control form-control-sm text-center fw-bold bg-light" name="Invoice_no" id="inputInvoiceNo" value="{{ $nextInvoiceNumber }}" readonly style="font-family: monospace; font-size: 0.82rem; width: 95px; height: 32px;">
+                                        </div>
+                                        <div style="width: 105px;">
+                                            <label class="form-label fw-bold text-secondary mb-0" style="font-size:0.68rem;">DATE</label>
+                                            <input type="text" name="sale_date" class="form-control form-control-sm datepicker-custom text-center fw-bold" id="displayDateInput" value="{{ date('Y-m-d') }}" style="font-size: 0.78rem; height: 32px;">
+                                        </div>
+                                        <div>
+                                            <label class="form-label mb-0 invisible" style="font-size:0.68rem;">ACTION</label>
+                                            <button type="button" class="btn btn-sm btn-success fw-bold py-1 px-3 shadow-sm d-flex align-items-center gap-1" id="btnHeaderSaveSale" style="font-size: 0.78rem; height: 32px; white-space: nowrap;">
+                                                <i class="fas fa-truck"></i> Deliver
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- HIDDEN FORM FIELDS REQUIRED BY CONTROLLER & JS VALIDATION --}}
+                    <input type="hidden" name="customer_order_id" id="customer_order_id" value="{{ isset($fromOrder) && $fromOrder ? $fromOrder->id : '' }}">
+                    <input type="hidden" id="orderAdvanceAmountHidden" name="order_advance_amount" value="{{ isset($fromOrder) && $fromOrder ? $fromOrder->advance_amount : 0 }}">
+                    <input type="hidden" name="reference" id="remarks" value="{{ isset($fromOrder) && $fromOrder ? 'Customer Order #' . $fromOrder->order_no : '' }}">
+                    <input type="hidden" name="credit_days" value="0">
+                    <input type="checkbox" id="walkinToggle" name="is_walkin" value="1" class="d-none" {{ (isset($fromOrder) && $fromOrder && $fromOrder->customer_id) ? '' : 'checked' }}>
+                    <input type="hidden" name="walkin_name" id="walkinNameInput" value="{{ (isset($fromOrder) && $fromOrder && !$fromOrder->customer_id) ? ($fromOrder->walkin_name ?? 'Walk-in Customer') : '' }}">
+                    <select class="d-none" id="customerSelect" name="customer">
+                        <option value="{{ (isset($fromOrder) && $fromOrder && $fromOrder->customer_id) ? $fromOrder->customer_id : '' }}" selected>
+                            {{ (isset($fromOrder) && $fromOrder && $fromOrder->customer_id) ? $fromOrder->customer_display_name : '' }}
+                        </option>
+                    </select>
+                @else
+                    {{-- TOP HEADER BAR --}}
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                        <div class="d-flex align-items-center gap-2">
+                            <a href="{{ route('sale.index') }}" class="btn btn-sm btn-light border rounded-circle" title="Back"><i class="fas fa-arrow-left text-secondary"></i></a>
+                            <div>
+                                <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2" style="font-size: 1.05rem;">
+                                    <i class="fas fa-shopping-cart text-primary"></i> New Sale
+                                </h5>
+                                <small class="text-muted" style="font-size: 0.7rem;">Create a new invoice</small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Calculator"><i class="fas fa-calculator"></i></button>
+                            <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Toggle Theme"><i class="fas fa-moon"></i></button>
+                            <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Fullscreen" onclick="document.documentElement.requestFullscreen()"><i class="fas fa-expand"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- TOP INFORMATION PANEL -->
+                    <div class="card-panel mb-2">
+                        <div class="row g-2 align-items-end w-100 m-0">
+                            <!-- Invoice No with Prefix Dropdown & Refresh -->
+                            <div class="col-sm-3 col-md-2">
+                                <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Invoice No.</label>
+                                <div class="input-group input-group-sm">
+                                    <button class="btn btn-success dropdown-toggle fw-bold text-white px-2 d-flex align-items-center gap-1" 
+                                            type="button" 
+                                            id="btnInvoicePrefix" 
+                                            data-bs-toggle="dropdown" 
+                                            aria-expanded="false"
+                                            style="background-color: #20c997; border-color: #20c997;">
+                                        <span id="activePrefixLabel">{{ $activePrefix ?? 'INV' }}</span>
+                                    </button>
+                                    <ul class="dropdown-menu shadow-lg p-1 border-0" id="dropdownInvoiceSeriesList" aria-labelledby="btnInvoicePrefix" style="min-width: 155px; font-size: 0.8rem; z-index: 1050;">
+                                        @if(isset($allSeries) && count($allSeries) > 0)
+                                            @foreach($allSeries as $s)
+                                                <li>
+                                                    <a class="dropdown-item fw-bold {{ ($activePrefix ?? 'INV') == $s->prefix ? 'text-success active bg-light' : '' }}" 
+                                                       href="#" 
+                                                       data-prefix="{{ $s->prefix }}" 
+                                                       data-next="{{ $s->next_number }}" 
+                                                       data-padding="{{ $s->padding }}">
+                                                        @if(($activePrefix ?? 'INV') == $s->prefix) <i class="fas fa-check text-success me-1"></i> @endif 
+                                                        {{ $s->prefix }} <span class="text-muted small font-monospace">({{ $s->padding }}d)</span>
+                                                    </a>
+                                                </li>
+                                            @endforeach
+                                        @else
+                                            <li><a class="dropdown-item fw-bold text-success active bg-light" href="#" data-prefix="INV"><i class="fas fa-check text-success me-1"></i> INV (4d)</a></li>
+                                        @endif
+                                        <li><hr class="dropdown-divider my-1"></li>
+                                        <li>
+                                            <a class="dropdown-item fw-bold text-success d-flex align-items-center gap-1" href="#" id="btnOpenAddSeriesModal">
+                                                <i class="fas fa-plus-circle me-1"></i> Add Series
+                                            </a>
+                                        </li>
+                                    </ul>
+
+                                    <input type="text" class="form-control text-center fw-bold input-readonly" name="Invoice_no" id="inputInvoiceNo" value="{{ $nextInvoiceNumber }}" readonly style="font-family: monospace;">
+
+                                    <button class="btn btn-success px-2 text-white" 
+                                            type="button" 
+                                            id="btnRefreshInvoiceNo" 
+                                            title="Regenerate Invoice Number"
+                                            style="background-color: #20c997; border-color: #20c997;">
+                                        <i class="fas fa-sync-alt" id="iconRefreshInvoice"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Date -->
+                            <div class="col-sm-2">
+                                <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Date</label>
+                                <input type="text" name="sale_date" class="form-control datepicker-custom text-center fw-bold" id="displayDateInput" value="{{ date('Y-m-d') }}">
+                            </div>
+                            <!-- Cr. Days -->
+                            <div class="col-sm-1">
+                                <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Cr. Days</label>
+                                <input type="number" class="form-control text-center fw-bold" name="credit_days" placeholder="0" min="0" value="{{ $sale->credit_days ?? '0' }}">
+                            </div>
+                            <!-- M.Bill / Remarks -->
+                            <div class="col-sm-2">
+                                <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">M.Bill / Remarks</label>
+                                <input type="text" class="form-control" name="reference" id="remarks" value="{{ isset($fromOrder) && $fromOrder ? 'Customer Order #' . $fromOrder->order_no : '' }}" placeholder="Enter remarks">
+                            </div>
+                            <!-- Customer & Walk-in Toggle -->
+                            <div class="col-sm-4">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label fw-bold text-secondary mb-0" style="font-size:0.7rem;">Customer</label>
+                                    <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 rounded-pill fw-bold" data-bs-toggle="modal" data-bs-target="#addCustomerModal" style="font-size: 0.65rem;">
+                                        <i class="fas fa-user-plus me-1"></i>New
+                                    </button>
+                                </div>
+                                <div id="customerInputWrapper">
+                                    <input type="text" class="form-control fw-bold" name="walkin_name" id="walkinNameInput" value="Walk-in Customer" placeholder="Enter Walk-in Name...">
+                                    <select class="form-select d-none" id="customerSelect" name="customer" style="width:100%">
+                                        <option value=""></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- Walkin & Save Button -->
+                            <div class="col-sm-1 d-flex flex-column align-items-end justify-content-end">
+                                <div class="d-flex align-items-center gap-1 mb-1">
+                                    <div class="form-check form-switch mb-0 d-flex align-items-center p-0">
+                                        <input class="form-check-input ms-0" type="checkbox" role="switch" id="walkinToggle" name="is_walkin" value="1" checked style="cursor: pointer;">
+                                        <label class="form-check-label fw-bold ms-1" for="walkinToggle" style="color: #2563eb; font-size: 0.72rem; cursor: pointer;">Walk-in</label>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-success w-100 fw-bold py-1 shadow-sm" id="btnHeaderSaveSale" style="font-size: 0.75rem;"><i class="fas fa-check me-1"></i>Save Sale</button>
+                            </div>
                         </div>
                     </div>
                 @endif
-
-                {{-- TOP HEADER BAR --}}
-                <div class="d-flex justify-content-between align-items-center mb-2 px-1">
-                    <div class="d-flex align-items-center gap-2">
-                        <a href="{{ route('sale.index') }}" class="btn btn-sm btn-light border rounded-circle" title="Back"><i class="fas fa-arrow-left text-secondary"></i></a>
-                        <div>
-                            <h5 class="mb-0 fw-bold text-dark d-flex align-items-center gap-2" style="font-size: 1.05rem;">
-                                <i class="fas fa-shopping-cart text-primary"></i> New Sale
-                            </h5>
-                            <small class="text-muted" style="font-size: 0.7rem;">Create a new invoice</small>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Calculator"><i class="fas fa-calculator"></i></button>
-                        <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Toggle Theme"><i class="fas fa-moon"></i></button>
-                        <button type="button" class="btn btn-sm btn-light border rounded-3 text-secondary" title="Fullscreen" onclick="document.documentElement.requestFullscreen()"><i class="fas fa-expand"></i></button>
-                    </div>
-                </div>
-
-                <!-- TOP INFORMATION PANEL -->
-                <div class="card-panel mb-2">
-                    <div class="row g-2 align-items-end w-100 m-0">
-                        <!-- Invoice No with Prefix Dropdown & Refresh -->
-                        <div class="col-sm-3 col-md-2">
-                            <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Invoice No.</label>
-                            <div class="input-group input-group-sm">
-                                <button class="btn btn-success dropdown-toggle fw-bold text-white px-2 d-flex align-items-center gap-1" 
-                                        type="button" 
-                                        id="btnInvoicePrefix" 
-                                        data-bs-toggle="dropdown" 
-                                        aria-expanded="false"
-                                        style="background-color: #20c997; border-color: #20c997;">
-                                    <span id="activePrefixLabel">{{ $activePrefix ?? 'INV' }}</span>
-                                </button>
-                                <ul class="dropdown-menu shadow-lg p-1 border-0" id="dropdownInvoiceSeriesList" aria-labelledby="btnInvoicePrefix" style="min-width: 155px; font-size: 0.8rem; z-index: 1050;">
-                                    @if(isset($allSeries) && count($allSeries) > 0)
-                                        @foreach($allSeries as $s)
-                                            <li>
-                                                <a class="dropdown-item fw-bold {{ ($activePrefix ?? 'INV') == $s->prefix ? 'text-success active bg-light' : '' }}" 
-                                                   href="#" 
-                                                   data-prefix="{{ $s->prefix }}" 
-                                                   data-next="{{ $s->next_number }}" 
-                                                   data-padding="{{ $s->padding }}">
-                                                    @if(($activePrefix ?? 'INV') == $s->prefix) <i class="fas fa-check text-success me-1"></i> @endif 
-                                                    {{ $s->prefix }} <span class="text-muted small font-monospace">({{ $s->padding }}d)</span>
-                                                </a>
-                                            </li>
-                                        @endforeach
-                                    @else
-                                        <li><a class="dropdown-item fw-bold text-success active bg-light" href="#" data-prefix="INV"><i class="fas fa-check text-success me-1"></i> INV (4d)</a></li>
-                                    @endif
-                                    <li><hr class="dropdown-divider my-1"></li>
-                                    <li>
-                                        <a class="dropdown-item fw-bold text-success d-flex align-items-center gap-1" href="#" id="btnOpenAddSeriesModal">
-                                            <i class="fas fa-plus-circle me-1"></i> Add Series
-                                        </a>
-                                    </li>
-                                </ul>
-
-                                <input type="text" class="form-control text-center fw-bold input-readonly" name="Invoice_no" id="inputInvoiceNo" value="{{ $nextInvoiceNumber }}" readonly style="font-family: monospace;">
-
-                                <button class="btn btn-success px-2 text-white" 
-                                        type="button" 
-                                        id="btnRefreshInvoiceNo" 
-                                        title="Regenerate Invoice Number"
-                                        style="background-color: #20c997; border-color: #20c997;">
-                                    <i class="fas fa-sync-alt" id="iconRefreshInvoice"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <!-- Date -->
-                        <div class="col-sm-2">
-                            <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Date</label>
-                            <input type="text" name="sale_date" class="form-control datepicker-custom text-center fw-bold" id="displayDateInput" value="{{ date('Y-m-d') }}">
-                        </div>
-                        <!-- Cr. Days -->
-                        @if (!isset($fromOrder) || !$fromOrder)
-                        <div class="col-sm-1">
-                            <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">Cr. Days</label>
-                            <input type="number" class="form-control text-center fw-bold" name="credit_days" placeholder="0" min="0" value="{{ $sale->credit_days ?? '0' }}">
-                        </div>
-                        @endif
-                        <!-- M.Bill / Remarks -->
-                        <div class="{{ isset($fromOrder) && $fromOrder ? 'col-sm-3' : 'col-sm-2' }}">
-                            <label class="form-label fw-bold text-secondary mb-1" style="font-size:0.7rem;">M.Bill / Remarks</label>
-                            <input type="text" class="form-control" name="reference" id="remarks" value="{{ isset($fromOrder) && $fromOrder ? 'Customer Order #' . $fromOrder->order_no : '' }}" placeholder="Enter remarks">
-                        </div>
-                        <!-- Customer & Walk-in Toggle -->
-                        <div class="col-sm-4">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <label class="form-label fw-bold text-secondary mb-0" style="font-size:0.7rem;">Customer</label>
-                                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 rounded-pill fw-bold" data-bs-toggle="modal" data-bs-target="#addCustomerModal" style="font-size: 0.65rem;">
-                                    <i class="fas fa-user-plus me-1"></i>New
-                                </button>
-                            </div>
-                            <div id="customerInputWrapper">
-                                <input type="text" class="form-control fw-bold" name="walkin_name" id="walkinNameInput" value="Walk-in Customer" placeholder="Enter Walk-in Name...">
-                                <select class="form-select d-none" id="customerSelect" name="customer" style="width:100%">
-                                    <option value=""></option>
-                                </select>
-                            </div>
-                        </div>
-                        <!-- Walkin & Save Button -->
-                        <div class="col-sm-1 d-flex flex-column align-items-end justify-content-end">
-                            <div class="d-flex align-items-center gap-1 mb-1">
-                                <div class="form-check form-switch mb-0 d-flex align-items-center p-0">
-                                    <input class="form-check-input ms-0" type="checkbox" role="switch" id="walkinToggle" name="is_walkin" value="1" checked style="cursor: pointer;">
-                                    <label class="form-check-label fw-bold ms-1" for="walkinToggle" style="color: #2563eb; font-size: 0.72rem; cursor: pointer;">Walk-in</label>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-success w-100 fw-bold py-1 shadow-sm" id="btnHeaderSaveSale" style="font-size: 0.75rem;"><i class="fas fa-check me-1"></i>Save Sale</button>
-                        </div>
-                    </div>
-                </div>
 
                 {{-- Hidden fields for backend --}}
                 <input type="hidden" id="address" name="address">
@@ -661,15 +773,15 @@
                         <div class="card-panel d-flex flex-column h-100 p-2 bg-white" style="border-radius:6px;">
                             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                                 <div class="d-flex align-items-center gap-2">
-                                    <div class="section-title mb-0" style="font-size:0.8rem;">Order Items (<span id="itemsRowCount">0</span>)</div>
-                                    @if (!isset($fromOrder) || !$fromOrder)
+                                    <div class="section-title mb-0" style="font-size:0.8rem;">{{ $isDelivery ? 'Delivery Items' : 'Order Items' }} (<span id="itemsRowCount">0</span>)</div>
+                                    @if (!$isDelivery)
                                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 fw-bold" data-bs-toggle="offcanvas" data-bs-target="#quickProductsOffcanvas" style="font-size:0.72rem;">
                                         <i class="fas fa-th me-1"></i>Quick Products Panel
                                     </button>
                                     @endif
                                 </div>
 
-                                @if (!isset($fromOrder) || !$fromOrder)
+                                @if (!$isDelivery)
                                 <!-- BARCODE SCANNER INPUT -->
                                 <div class="d-flex align-items-center" style="min-width: 260px; max-width: 380px; flex: 1;">
                                     <div class="input-group input-group-sm shadow-sm" style="border-radius: 20px; overflow: hidden; border: 1.5px solid #2563eb;">
@@ -699,7 +811,7 @@
                                     <thead>
                                         <tr>
                                             <th style="width:25px;" class="text-center">#</th>
-                                            <th class="col-product" style="min-width: 140px;">PRODUCT</th>
+                                            <th class="col-product" style="min-width: 140px;">{{ $isDelivery ? 'ORDER ITEM / DESCRIPTION' : 'PRODUCT' }}</th>
                                             <th class="col-stock" style="width: 55px;">STOCK</th>
                                             <th class="col-qty" style="width: 95px;">QTY</th>
                                             <th class="col-size" style="width: 55px;">SIZE</th>
@@ -712,112 +824,170 @@
                                         </tr>
                                     </thead>
                                     <tbody id="salesTableBody">
-                                        <tr>
-                                            <!-- # ROW INDEX -->
-                                            <td class="text-center fw-bold text-muted row-index" style="vertical-align:middle; font-size:0.75rem;">1</td>
-
-                                            <!-- PRODUCT -->
-                                            <td class="col-product">
-                                                <select class="form-select product" style="width:100%">
-                                                    <option value=""></option>
-                                                </select>
-                                                <input type="hidden" class="product-id-hidden" name="product_id[]">
-                                                <input type="hidden" class="variant-data-hidden" name="color[]">
-                                                <input type="hidden" class="item-code-display">
-                                                <input type="hidden" class="size-h">
-                                                <input type="hidden" class="size-w">
-                                                <input type="hidden" class="size-mode-text">
-                                            </td>
-
-                                            <!-- STOCK -->
-                                            <td class="col-stock">
-                                                <input type="text" class="form-control stock text-center input-readonly" readonly tabindex="-1">
-                                                <input type="hidden" class="warehouse" name="warehouse_id[]" value="{{ auth()->user()->warehouse_id ?? 1 }}">
-                                                <input type="hidden" class="variant-stock-value">
-                                            </td>
-
-                                            <!-- Qty cell with Sub-Unit toggle on Right and Left-Aligned Cursor -->
-                                            <td style="width:95px;min-width:95px;" class="col-qty-wrapper">
-                                                <div class="d-flex align-items-center gap-1">
-                                                    <input type="number" step="any" class="form-control carton-qty text-start" name="carton_qty[]" placeholder="0" min="0" value="" style="flex: 1; min-width: 0; height: 26px; font-size: 0.85rem; padding-left: 6px;">
-                                                    <button type="button" class="btn btn-sm btn-outline-primary qty-unit-toggle px-1 py-0 d-none" 
-                                                            data-unit-mode="main" title="Toggle Unit (Ctn ↔ Pcs / Kg ↔ Gm / Ft ↔ In)" style="font-size: 0.65rem; height: 26px; min-width: 28px; font-weight: 700; border-radius: 4px; flex-shrink: 0;">
-                                                        Kg
-                                                    </button>
-                                                </div>
-                                                <input type="hidden" class="hidden-sub-unit-mode" name="sub_unit_mode[]" value="main">
-                                            </td>
-
-                                            <!-- Loose Pieces -->
-                                            <td style="width:70px;min-width:70px;" class="d-none">
-                                                <input type="number" class="form-control loose-pcs-input text-end" name="loose_qty[]" placeholder="" min="0" value="">
-                                            </td>
-
-                                            <!-- Size (Display - readonly) -->
-                                            <td class="col-size">
-                                                <input type="text" class="form-control size-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
-                                                <input type="hidden" class="pack-qty" name="pack_qty[]" value="1">
-                                            </td>
-
-                                            <!-- Color (Display - readonly) -->
-                                            <td class="col-color">
-                                                <input type="text" class="form-control color-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
-                                            </td>
-
-                                            <!-- Total Pieces (Calculated) -->
-                                            <td class="col-pieces">
-                                                <input type="text" class="form-control total-pieces text-end input-readonly" name="total_pieces[]" readonly placeholder="0" tabindex="-1">
-                                                <!-- Hidden qty field for backend compatibility -->
-                                                <input type="hidden" class="sales-qty" name="qty[]" value="0">
-                                            </td>
-                                         
-                                            <!-- Price/Piece (EDITABLE) -->
-                                            <td class="col-price-p">
-                                                <div class="d-flex align-items-center gap-1">
-                                                    <input type="text" class="form-control visible-price text-end" name="visible_price[]" placeholder="0" style="flex: 1; min-width: 0;">
-                                                    <button type="button" class="btn btn-sm btn-outline-primary price-mode-row-toggle px-1 py-0" 
-                                                            data-mode="retail" title="Retail Mode" style="font-size: 0.65rem; height: 24px; min-width: 20px; font-weight: bold;">
-                                                        R
-                                                    </button>
-                                                </div>
-                                                <input type="hidden" class="price-per-piece" name="price_per_piece[]">
-                                                <input type="hidden" class="retail-price">
-                                                <input type="hidden" class="wholesale-price">
-                                                <input type="hidden" class="weight-per-piece">
-                                            </td>
-
-                                            <!-- SINGLE DISCOUNT COLUMN -->
-                                            <td class="col-disc">
-                                                <div class="discount-wrapper">
-                                                    <input type="number"
-                                                           class="form-control discount-value text-end"
-                                                           name="item_disc[]"
-                                                           placeholder="0">
-                                                    <input type="hidden" class="discount-type-hidden" name="discount_type[]" value="percent">
-                                                    <button type="button"
-                                                            class="btn btn-outline-secondary discount-toggle"
-                                                            data-type="percent" tabindex="-1">%</button>
-                                                </div>
-                                                <input type="hidden" class="discount-amount" value="0">
-                                            </td>
-
-                                            <!-- NET AMOUNT -->
-                                            <td class="col-amount">
-                                                <input type="text" class="form-control sales-amount text-end input-readonly" name="total[]" value="0" readonly tabindex="-1">
-                                                <input type="hidden" class="gross-amount">
-                                            </td>
-
-                                            <!-- ACTION -->
-                                            <td class="col-action text-center">
-                                                <button type="button" class="btn btn-sm btn-outline-danger del-row" tabindex="-1">&times;</button>
-                                            </td>
-                                        </tr>
+                                        @if ($isDelivery)
+                                            @if (isset($fromOrder) && $fromOrder && count($fromOrder->items) > 0)
+                                                @foreach ($fromOrder->items as $idx => $item)
+                                                    <tr class="delivery-item-row" data-item-id="{{ $item->id }}">
+                                                        <td class="text-center fw-bold text-muted row-index" style="vertical-align:middle; font-size:0.75rem;">{{ $idx + 1 }}</td>
+                                                        <td class="col-product" style="padding: 4px 8px !important; vertical-align: middle !important;">
+                                                            <div class="d-flex flex-column text-start">
+                                                                <span class="fw-bold text-dark" style="font-size:0.88rem;">{{ $item->item_name }}</span>
+                                                                @if($item->description)
+                                                                    <span class="text-muted small" style="font-size:0.72rem; line-height:1.2;">{{ $item->description }}</span>
+                                                                @endif
+                                                            </div>
+                                                            <input type="hidden" class="product-id-hidden" name="product_id[]" value="{{ $item->product_id ?? '' }}">
+                                                            <input type="hidden" class="is-manual" name="is_manual[]" value="{{ $item->product_id ? '0' : '1' }}">
+                                                            <input type="hidden" name="manual_product_name[]" value="{{ $item->item_name }}">
+                                                            <input type="hidden" class="variant-data-hidden" name="color[]" value="">
+                                                            <input type="hidden" class="item-code-display" value="">
+                                                            <input type="hidden" class="size-h" value="0">
+                                                            <input type="hidden" class="size-w" value="0">
+                                                            <input type="hidden" class="size-mode-text" value="pieces">
+                                                        </td>
+                                                        <td class="col-stock">
+                                                            <input type="text" class="form-control stock text-center input-readonly" readonly tabindex="-1" value="0">
+                                                            <input type="hidden" class="warehouse" name="warehouse_id[]" value="{{ auth()->user()->warehouse_id ?? 1 }}">
+                                                            <input type="hidden" class="variant-stock-value" value="0">
+                                                        </td>
+                                                        <td style="width:95px;min-width:95px;" class="col-qty-wrapper">
+                                                            <div class="d-flex align-items-center gap-1">
+                                                                <input type="number" step="any" class="form-control carton-qty text-center fw-bold" name="carton_qty[]" min="0.01" value="{{ $item->qty }}" style="height: 26px; font-size: 0.85rem;">
+                                                            </div>
+                                                            <input type="hidden" class="hidden-sub-unit-mode" name="sub_unit_mode[]" value="main">
+                                                        </td>
+                                                        <td style="width:70px;min-width:70px;" class="d-none">
+                                                            <input type="number" class="form-control loose-pcs-input text-end" name="loose_qty[]" value="0">
+                                                        </td>
+                                                        <td class="col-size">
+                                                            <input type="text" class="form-control size-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
+                                                            <input type="hidden" class="pack-qty" name="pack_qty[]" value="1">
+                                                        </td>
+                                                        <td class="col-color">
+                                                            <input type="text" class="form-control color-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
+                                                        </td>
+                                                        <td class="col-pieces">
+                                                            <input type="text" class="form-control total-pieces text-end input-readonly" name="total_pieces[]" value="{{ $item->qty }}" readonly tabindex="-1">
+                                                            <input type="hidden" class="sales-qty" name="qty[]" value="{{ $item->qty }}">
+                                                        </td>
+                                                        <td class="col-price-p">
+                                                            <div class="d-flex align-items-center gap-1">
+                                                                <input type="text" class="form-control visible-price text-end fw-bold" name="visible_price[]" value="{{ number_format($item->price, 2, '.', '') }}" style="flex: 1; min-width: 0;">
+                                                            </div>
+                                                            <input type="hidden" class="price-per-piece" name="price_per_piece[]" value="{{ $item->price }}">
+                                                            <input type="hidden" class="retail-price" value="{{ $item->price }}">
+                                                            <input type="hidden" class="wholesale-price" value="{{ $item->price }}">
+                                                            <input type="hidden" class="weight-per-piece" value="0">
+                                                        </td>
+                                                        <td class="col-disc">
+                                                            <div class="discount-wrapper">
+                                                                <input type="number" class="form-control discount-value text-end" name="item_disc[]" value="0" placeholder="0">
+                                                                <input type="hidden" class="discount-type-hidden" name="discount_type[]" value="percent">
+                                                                <button type="button" class="btn btn-outline-secondary discount-toggle" data-type="percent" tabindex="-1">%</button>
+                                                            </div>
+                                                            <input type="hidden" class="discount-amount" value="0">
+                                                        </td>
+                                                        <td class="col-amount">
+                                                            <input type="text" class="form-control sales-amount text-end input-readonly fw-bold" name="total[]" value="{{ number_format($item->qty * $item->price, 2, '.', '') }}" readonly tabindex="-1">
+                                                            <input type="hidden" class="gross-amount" value="{{ number_format($item->qty * $item->price, 2, '.', '') }}">
+                                                        </td>
+                                                        <td class="col-action text-center">
+                                                            <button type="button" class="btn btn-sm btn-outline-danger del-row" tabindex="-1">&times;</button>
+                                                        </td>
+                                                    </tr>
+                                                @endforeach
+                                            @else
+                                                <tr id="noDeliveryOrderPlaceholder">
+                                                    <td colspan="7" class="text-center py-4 text-muted bg-white">
+                                                        <i class="fas fa-truck fa-2x text-success mb-2 d-block opacity-50"></i>
+                                                        <span class="fw-bold" style="font-size: 0.9rem;">Please select an undelivered order above to deliver items.</span>
+                                                    </td>
+                                                </tr>
+                                            @endif
+                                        @else
+                                            <tr>
+                                                <td class="text-center fw-bold text-muted row-index" style="vertical-align:middle; font-size:0.75rem;">1</td>
+                                                <td class="col-product">
+                                                    <select class="form-select product" style="width:100%">
+                                                        <option value=""></option>
+                                                    </select>
+                                                    <input type="hidden" class="product-id-hidden" name="product_id[]">
+                                                    <input type="hidden" class="variant-data-hidden" name="color[]">
+                                                    <input type="hidden" class="item-code-display">
+                                                    <input type="hidden" class="size-h">
+                                                    <input type="hidden" class="size-w">
+                                                    <input type="hidden" class="size-mode-text">
+                                                </td>
+                                                <td class="col-stock">
+                                                    <input type="text" class="form-control stock text-center input-readonly" readonly tabindex="-1">
+                                                    <input type="hidden" class="warehouse" name="warehouse_id[]" value="{{ auth()->user()->warehouse_id ?? 1 }}">
+                                                    <input type="hidden" class="variant-stock-value">
+                                                </td>
+                                                <td style="width:95px;min-width:95px;" class="col-qty-wrapper">
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <input type="number" step="any" class="form-control carton-qty text-start" name="carton_qty[]" placeholder="0" min="0" value="" style="flex: 1; min-width: 0; height: 26px; font-size: 0.85rem; padding-left: 6px;">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary qty-unit-toggle px-1 py-0 d-none" 
+                                                                data-unit-mode="main" title="Toggle Unit (Ctn ↔ Pcs / Kg ↔ Gm / Ft ↔ In)" style="font-size: 0.65rem; height: 26px; min-width: 28px; font-weight: 700; border-radius: 4px; flex-shrink: 0;">
+                                                            Kg
+                                                        </button>
+                                                    </div>
+                                                    <input type="hidden" class="hidden-sub-unit-mode" name="sub_unit_mode[]" value="main">
+                                                </td>
+                                                <td style="width:70px;min-width:70px;" class="d-none">
+                                                    <input type="number" class="form-control loose-pcs-input text-end" name="loose_qty[]" placeholder="" min="0" value="">
+                                                </td>
+                                                <td class="col-size">
+                                                    <input type="text" class="form-control size-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
+                                                    <input type="hidden" class="pack-qty" name="pack_qty[]" value="1">
+                                                </td>
+                                                <td class="col-color">
+                                                    <input type="text" class="form-control color-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
+                                                </td>
+                                                <td class="col-pieces">
+                                                    <input type="text" class="form-control total-pieces text-end input-readonly" name="total_pieces[]" readonly placeholder="0" tabindex="-1">
+                                                    <input type="hidden" class="sales-qty" name="qty[]" value="0">
+                                                </td>
+                                                <td class="col-price-p">
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <input type="text" class="form-control visible-price text-end" name="visible_price[]" placeholder="0" style="flex: 1; min-width: 0;">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary price-mode-row-toggle px-1 py-0" 
+                                                                data-mode="retail" title="Retail Mode" style="font-size: 0.65rem; height: 24px; min-width: 20px; font-weight: bold;">
+                                                            R
+                                                        </button>
+                                                    </div>
+                                                    <input type="hidden" class="price-per-piece" name="price_per_piece[]">
+                                                    <input type="hidden" class="retail-price">
+                                                    <input type="hidden" class="wholesale-price">
+                                                    <input type="hidden" class="weight-per-piece">
+                                                </td>
+                                                <td class="col-disc">
+                                                    <div class="discount-wrapper">
+                                                        <input type="number"
+                                                               class="form-control discount-value text-end"
+                                                               name="item_disc[]"
+                                                               placeholder="0">
+                                                        <input type="hidden" class="discount-type-hidden" name="discount_type[]" value="percent">
+                                                        <button type="button"
+                                                                class="btn btn-outline-secondary discount-toggle"
+                                                                data-type="percent" tabindex="-1">%</button>
+                                                    </div>
+                                                    <input type="hidden" class="discount-amount" value="0">
+                                                </td>
+                                                <td class="col-amount">
+                                                    <input type="text" class="form-control sales-amount text-end input-readonly" name="total[]" value="0" readonly tabindex="-1">
+                                                    <input type="hidden" class="gross-amount">
+                                                </td>
+                                                <td class="col-action text-center">
+                                                    <button type="button" class="btn btn-sm btn-outline-danger del-row" tabindex="-1">&times;</button>
+                                                </td>
+                                            </tr>
+                                        @endif
                                     </tbody>
                                     <tfoot>
                                         <tr>
-                                            <td colspan="9" class="text-end fw-bold text-uppercase text-secondary" style="font-size:0.78rem;">Grid Total:</td>
+                                            <td colspan="{{ $isDelivery ? 5 : 9 }}" class="text-end fw-bold text-uppercase text-secondary" style="font-size:0.78rem;">Grid Total:</td>
                                             <td class="text-end fw-bold text-success fs-6"><span id="totalAmount">0.00</span></td>
-                                            <td></td>
+                                            <td class="text-center"></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -847,14 +1017,14 @@
                                     <span class="fw-bold text-dark">Net Total</span>
                                     <span class="summary-val-net" id="tSub">0.00</span>
                                 </div>
-                                @if (isset($fromOrder) && $fromOrder)
-                                <div class="summary-row">
+                                @if ($isDelivery)
+                                <div class="summary-row" id="rowOrderAdvance">
                                     <span class="text-muted">Order Advance</span>
                                     <span class="fw-bold text-success" id="summaryOrderAdvance">Rs {{ number_format($fromOrder->advance_amount ?? 0, 2) }}</span>
                                 </div>
-                                <div class="summary-row">
+                                <div class="summary-row" id="rowBalanceDue">
                                     <span class="fw-bold text-dark">Balance Due</span>
-                                    <span class="fw-bold text-primary" id="summaryBalanceDue">Rs {{ number_format(max(0, $fromOrder->total_amount - ($fromOrder->advance_amount ?? 0)), 2) }}</span>
+                                    <span class="fw-bold text-primary" id="summaryBalanceDue">Rs {{ number_format(max(0, ($fromOrder->total_amount ?? 0) - ($fromOrder->advance_amount ?? 0)), 2) }}</span>
                                 </div>
                                 @endif
                                 <div class="summary-row">
@@ -886,7 +1056,7 @@
                                 </div>
 
                                 <button type="button" class="btn btn-save-complete w-100 mt-auto py-2" id="btnSaveAndComplete">
-                                    <i class="fas fa-save me-2"></i>Save & Complete (F9)
+                                    <i class="fas {{ $isDelivery ? 'fa-truck' : 'fa-save' }} me-2"></i>{{ $isDelivery ? 'Complete Delivery (F9)' : 'Save & Complete (F9)' }}
                                 </button>
                             </div>
                         </div>
@@ -908,8 +1078,8 @@
                         </div>
                     </div>
 
-                    @if (isset($fromOrder) && $fromOrder)
-                    <div class="d-flex align-items-center gap-2">
+                    @if ($isDelivery)
+                    <div class="d-flex align-items-center gap-2" id="bottomAdvanceWrapper">
                         <span class="text-muted fw-semibold" style="font-size:0.8rem;">Advance</span>
                         <span class="fs-6 fw-bold text-success" id="bottomAdvanceVal">Rs {{ number_format($fromOrder->advance_amount ?? 0, 2) }}</span>
                     </div>
@@ -925,19 +1095,21 @@
                         <span class="fs-6 fw-bold text-danger" id="bottomChangeVal">-0.00</span>
                     </div>
 
+                    @if (!$isDelivery)
                     <button type="button" class="btn btn-save-complete" id="btnSaveAndComplete2">
                         <i class="fas fa-save me-2"></i>Save & Complete (F9)
                     </button>
+                    @endif
                 </div>
 
                 {{-- ACTION BUTTONS ROW --}}
                 <div class="d-flex flex-wrap gap-2 justify-content-center py-2 px-3 mt-2 border-top bg-white rounded-3 shadow-sm">
-                    @if (!isset($fromOrder) || !$fromOrder)
+                    @if (!$isDelivery)
                     <button type="button" class="btn btn-outline-primary btn-sm px-3 fw-bold" id="btnSave"><i class="fas fa-bookmark me-1"></i>Booking</button>
                     @endif
-                    <button type="button" class="btn btn-primary btn-sm px-4 fw-bold" id="btnPosted" disabled><i class="fas fa-shopping-cart me-1"></i>Sale</button>
+                    <button type="button" class="btn {{ $isDelivery ? 'btn-success' : 'btn-primary' }} btn-sm px-4 fw-bold shadow-sm" id="btnPosted"><i class="fas {{ $isDelivery ? 'fa-truck' : 'fa-shopping-cart' }} me-1"></i>{{ $isDelivery ? 'Deliver Order' : 'Sale' }}</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnPrint"><i class="fas fa-print me-1"></i>A4 Print</button>
-                    @if (!isset($fromOrder) || !$fromOrder)
+                    @if (!$isDelivery)
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnEstimate"><i class="fas fa-file-invoice me-1"></i>Estimate</button>
                     @endif
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnPrint2"><i class="fas fa-receipt me-1"></i>Thermal Print</button>
@@ -1118,16 +1290,22 @@
 @endsection
 
 @section('js')
+    <script>window.isDeliveryMode = {{ $isDelivery ? 'true' : 'false' }};</script>
     @include('admin_panel.sale.scripts.shared_logic')
 
     <script>
+        const isDeliveryMode = window.isDeliveryMode;
+        const allPendingOrders = @json($undeliveredOrders ?? []);
+
         $(document).ready(function() {
             // --- Initial Setup ---
-            $('#salesTableBody tr').each(function() {
-                initProductSelect2($(this).find('.product'));
-            });
-            if ($('#salesTableBody tr').length === 0) {
-                addNewRow();
+            if (!isDeliveryMode) {
+                $('#salesTableBody tr').each(function() {
+                    initProductSelect2($(this).find('.product'));
+                });
+                if ($('#salesTableBody tr').length === 0) {
+                    addNewRow();
+                }
             }
             updateGrandTotals();
             refreshPostedState();
@@ -1148,52 +1326,54 @@
                 return $('input[name="partyType"]:checked').val() || 'Main Customer';
             }
 
-            $('#customerSelect').select2({
-                placeholder: 'Search by Name or Code...',
-                allowClear: true,
-                width: '100%',
-                minimumInputLength: 0,
-                ajax: {
-                    url: '{{ route('salecustomers.index') }}',
-                    dataType: 'json',
-                    delay: 250,
-                    data: function(params) {
-                        return {
-                            type: getPartyType(),
-                            search: params.term || ''
-                        };
+            if (!isDeliveryMode) {
+                $('#customerSelect').select2({
+                    placeholder: 'Search by Name or Code...',
+                    allowClear: true,
+                    width: '100%',
+                    minimumInputLength: 0,
+                    ajax: {
+                        url: '{{ route('salecustomers.index') }}',
+                        dataType: 'json',
+                        delay: 250,
+                        data: function(params) {
+                            return {
+                                type: getPartyType(),
+                                search: params.term || ''
+                            };
+                        },
+                        processResults: function(data) {
+                            return {
+                                results: data.map(function(c) {
+                                    return {
+                                        id: c.id,
+                                        text: (c.customer_id || '') + ' — ' + c.customer_name,
+                                        customer: c
+                                    };
+                                })
+                            };
+                        },
+                        cache: false
                     },
-                    processResults: function(data) {
-                        return {
-                            results: data.map(function(c) {
-                                return {
-                                    id: c.id,
-                                    text: (c.customer_id || '') + ' — ' + c.customer_name,
-                                    customer: c
-                                };
-                            })
-                        };
+                    templateResult: function(item) {
+                        if (item.loading) return item.text;
+                        if (!item.customer) return item.text;
+                        const c = item.customer;
+                        return $(`<div>
+                            <strong>${c.customer_name}</strong>
+                            <small class="text-muted ms-2">${c.customer_id || ''}</small>
+                            ${c.mobile ? '<br><small class="text-muted">' + c.mobile + '</small>' : ''}
+                        </div>`);
                     },
-                    cache: false
-                },
-                templateResult: function(item) {
-                    if (item.loading) return item.text;
-                    if (!item.customer) return item.text;
-                    const c = item.customer;
-                    return $(`<div>
-                        <strong>${c.customer_name}</strong>
-                        <small class="text-muted ms-2">${c.customer_id || ''}</small>
-                        ${c.mobile ? '<br><small class="text-muted">' + c.mobile + '</small>' : ''}
-                    </div>`);
-                },
-                templateSelection: function(item) {
-                    if (!item.customer) return item.text;
-                    return item.customer.customer_id + ' — ' + item.customer.customer_name;
-                }
-            });
+                    templateSelection: function(item) {
+                        if (!item.customer) return item.text;
+                        return item.customer.customer_id + ' — ' + item.customer.customer_name;
+                    }
+                });
 
-            // Set initial visibility state of Customer Select / Walk-in input
-            $('#walkinToggle').trigger('change');
+                // Set initial visibility state of Customer Select / Walk-in input
+                $('#walkinToggle').trigger('change');
+            }
 
             // Party type change → reset customer
             $(document).on('change', 'input[name="partyType"]', function() {
@@ -1443,96 +1623,263 @@
                     }
                 });
             });
-            // Auto-load Customer Order into Sale form for delivery
-            @if (isset($fromOrder) && $fromOrder)
-                (function() {
-                    // 1. Setup Customer
-                    @if ($fromOrder->customer_id && $fromOrder->customer)
-                        $('#walkinToggle').prop('checked', false).trigger('change');
-                        let orderCustOpt = new Option(
-                            "{{ addslashes($fromOrder->customer->customer_id . ' — ' . $fromOrder->customer->customer_name) }}",
-                            "{{ $fromOrder->customer_id }}",
-                            true,
-                            true
-                        );
-                        $('#customerSelect').append(orderCustOpt).trigger('change');
-                        $.get("{{ url('sale/customers') }}/{{ $fromOrder->customer_id }}?t=" + new Date().getTime(), function(d) {
-                            $('#address').val(d.address || '');
-                            $('#tel').val(d.mobile || '');
-                            const prev = parseFloat(d.previous_balance || 0);
-                            const range = parseFloat(d.balance_range || 0);
-                            $('#previousBalance').val(prev.toFixed(2));
-                            $('#rangeBalance').val(range.toFixed(2));
+                        // ==========================================
+            // Customer Order Delivery Dynamic Handling
+            // ==========================================
+            function escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
 
-                            $('#ci_code').text(d.customer_id || '—');
-                            $('#ci_name').text(d.customer_name || '—');
-                            $('#ci_mobile').text(d.mobile || '—');
-                            $('#ci_address').text(d.address || '—');
-                            $('#ci_prev_bal').text(prev.toFixed(2));
-                            $('#ci_range_bal').text(range.toFixed(2));
-                            $('#customerInfoCard').removeClass('d-none');
-                            if (typeof updateGrandTotals === 'function') updateGrandTotals();
-                        });
-                    @else
-                        $('#walkinToggle').prop('checked', true).trigger('change');
-                        $('#walkinNameInput').val("{{ addslashes($fromOrder->walkin_name ?: 'Walk-in Customer') }}");
-                    @endif
+            function renderDeliveryItemRow(item, index) {
+                let pName = item.item_name || 'Item';
+                let pDesc = item.description || '';
+                let unit = item.unit || 'Pcs';
+                let qty = parseFloat(item.qty) || 1;
+                let price = parseFloat(item.price) || 0;
+                let lineTotal = (qty * price).toFixed(2);
+                let pid = item.product_id || '';
+                let isManual = pid ? '0' : '1';
 
-                    // 2. Populate Order Items
-                    const orderItemsList = @json($fromOrder->items);
-                    if (orderItemsList && orderItemsList.length > 0) {
-                        $('#salesTableBody').empty();
-                        orderItemsList.forEach(function(item) {
-                            addNewRow();
-                            const $row = $('#salesTableBody tr:last-child');
-                            
-                            let pid = item.product_id;
-                            let pName = item.item_name;
-                            let unitPrice = parseFloat(item.price) || 0;
-                            let qty = parseFloat(item.qty) || 1;
+                return `
+                <tr class="delivery-item-row" data-item-id="${item.id || ''}">
+                    <!-- # ROW INDEX -->
+                    <td class="text-center fw-bold text-muted row-index" style="vertical-align:middle; font-size:0.75rem;">${index + 1}</td>
 
-                            if (pid) {
-                                $row.find('.product-id-hidden').val(pid);
-                                let pOpt = new Option(pName, pid, true, true);
-                                $row.find('.product').append(pOpt);
-                                if (typeof loadWarehousesForProduct === 'function') {
-                                    loadWarehousesForProduct($row, pid);
-                                }
-                            } else {
-                                $row.find('.product-id-hidden').val('');
-                                let pOpt = new Option(pName, 'custom', true, true);
-                                $row.find('.product').append(pOpt);
-                                $row.find('.is-manual').val('1');
-                                $row.find('.manual-cost-price').val(unitPrice);
-                            }
+                    <!-- ORDER ITEM / DESCRIPTION -->
+                    <td class="col-product" style="padding: 4px 8px !important; vertical-align: middle !important;">
+                        <div class="d-flex flex-column text-start">
+                            <span class="fw-bold text-dark" style="font-size:0.88rem;">${escapeHtml(pName)}</span>
+                            ${pDesc ? `<span class="text-muted small" style="font-size:0.72rem; line-height:1.2;">${escapeHtml(pDesc)}</span>` : ''}
+                        </div>
+                        <input type="hidden" class="product-id-hidden" name="product_id[]" value="${pid}">
+                        <input type="hidden" class="is-manual" name="is_manual[]" value="${isManual}">
+                        <input type="hidden" name="manual_product_name[]" value="${escapeHtml(pName)}">
+                        <input type="hidden" class="variant-data-hidden" name="color[]" value="">
+                        <input type="hidden" class="item-code-display" value="">
+                        <input type="hidden" class="size-h" value="0">
+                        <input type="hidden" class="size-w" value="0">
+                        <input type="hidden" class="size-mode-text" value="pieces">
+                    </td>
 
-                            $row.find('.carton-qty').val(qty);
-                            $row.find('.total-pieces').val(qty);
-                            $row.find('.sales-qty').val(qty);
-                            $row.find('.visible-price').val(unitPrice);
-                            $row.find('.price-per-piece').val(unitPrice);
-                            $row.find('.retail-price').val(unitPrice);
-                            $row.find('.pack-qty').val(1);
-                            
-                            if (typeof computeRow === 'function') {
-                                computeRow($row);
-                            }
-                        });
+                    <!-- STOCK (Hidden) -->
+                    <td class="col-stock">
+                        <input type="text" class="form-control stock text-center input-readonly" readonly tabindex="-1" value="0">
+                        <input type="hidden" class="warehouse" name="warehouse_id[]" value="{{ auth()->user()->warehouse_id ?? 1 }}">
+                        <input type="hidden" class="variant-stock-value" value="0">
+                    </td>
 
-                        @if ($fromOrder->discount > 0)
-                            $('#walkinDiscountRs').val("{{ $fromOrder->discount }}");
-                        @endif
+                    <!-- QTY -->
+                    <td style="width:95px;min-width:95px;" class="col-qty-wrapper">
+                        <div class="d-flex align-items-center gap-1">
+                            <input type="number" step="any" class="form-control carton-qty text-center fw-bold" name="carton_qty[]" min="0.01" value="${qty}" style="height: 26px; font-size: 0.85rem;">
+                        </div>
+                        <input type="hidden" class="hidden-sub-unit-mode" name="sub_unit_mode[]" value="main">
+                    </td>
 
-                        setTimeout(function() {
-                            if (typeof recomputeReceipts === 'function') {
-                                recomputeReceipts();
-                            } else if (typeof updateGrandTotals === 'function') {
-                                updateGrandTotals();
-                            }
-                        }, 120);
+                    <!-- Loose Pieces (Hidden) -->
+                    <td style="width:70px;min-width:70px;" class="d-none">
+                        <input type="number" class="form-control loose-pcs-input text-end" name="loose_qty[]" value="0">
+                    </td>
+
+                    <!-- Size (Hidden) -->
+                    <td class="col-size">
+                        <input type="text" class="form-control size-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
+                        <input type="hidden" class="pack-qty" name="pack_qty[]" value="1">
+                    </td>
+
+                    <!-- Color (Hidden) -->
+                    <td class="col-color">
+                        <input type="text" class="form-control color-display text-center input-readonly" readonly tabindex="-1" placeholder="-">
+                    </td>
+
+                    <!-- Total Pieces (Hidden) -->
+                    <td class="col-pieces">
+                        <input type="text" class="form-control total-pieces text-end input-readonly" name="total_pieces[]" value="${qty}" readonly tabindex="-1">
+                        <input type="hidden" class="sales-qty" name="qty[]" value="${qty}">
+                    </td>
+
+                    <!-- Price -->
+                    <td class="col-price-p">
+                        <div class="d-flex align-items-center gap-1">
+                            <input type="text" class="form-control visible-price text-end fw-bold" name="visible_price[]" value="${price.toFixed(2)}" style="flex: 1; min-width: 0;">
+                        </div>
+                        <input type="hidden" class="price-per-piece" name="price_per_piece[]" value="${price}">
+                        <input type="hidden" class="retail-price" value="${price}">
+                        <input type="hidden" class="wholesale-price" value="${price}">
+                        <input type="hidden" class="weight-per-piece" value="0">
+                    </td>
+
+                    <!-- DISCOUNT -->
+                    <td class="col-disc">
+                        <div class="discount-wrapper">
+                            <input type="number" class="form-control discount-value text-end" name="item_disc[]" value="0" placeholder="0">
+                            <input type="hidden" class="discount-type-hidden" name="discount_type[]" value="percent">
+                            <button type="button" class="btn btn-outline-secondary discount-toggle" data-type="percent" tabindex="-1">%</button>
+                        </div>
+                        <input type="hidden" class="discount-amount" value="0">
+                    </td>
+
+                    <!-- NET AMOUNT -->
+                    <td class="col-amount">
+                        <input type="text" class="form-control sales-amount text-end input-readonly fw-bold" name="total[]" value="${lineTotal}" readonly tabindex="-1">
+                        <input type="hidden" class="gross-amount" value="${lineTotal}">
+                    </td>
+
+                    <!-- ACTION -->
+                    <td class="col-action text-center">
+                        <button type="button" class="btn btn-sm btn-outline-danger del-row" tabindex="-1">&times;</button>
+                    </td>
+                </tr>
+                `;
+            }
+
+            let isOrderLoadingInProgress = false;
+
+            function loadOrderIntoDeliveryForm(order) {
+                if (!order || isOrderLoadingInProgress) return;
+                isOrderLoadingInProgress = true;
+
+                try {
+                    // 1. Hidden Order Fields & Remarks
+                    $('#customer_order_id').val(order.id);
+                    const adv = parseFloat(order.advance_amount) || 0;
+                    const tot = parseFloat(order.total_amount) || 0;
+                    const balDue = Math.max(0, tot - adv);
+                    $('#orderAdvanceAmountHidden').val(adv);
+                    $('#remarks').val('Customer Order #' + order.order_no);
+
+                    // 2. Customer & Order Card Info
+                    $('#cardOrderBadge').text('Delivering Customer Order #' + order.order_no);
+                    let cDisp = order.customer_display_name || (order.customer ? order.customer.customer_name : (order.walkin_name || 'Customer'));
+                    $('#cardCustomerName').text(cDisp);
+                    $('#cardCustomerType').text(order.customer_id ? 'Registered' : 'Walk-in');
+
+                    const phone = order.customer_phone || (order.customer ? (order.customer.mobile || order.customer.phone) : '');
+                    const address = order.customer_address || (order.customer ? order.customer.address : '');
+
+                    if (phone) {
+                        $('#cardCustomerPhone').text(phone);
+                        $('#cardCustomerPhoneWrapper').removeClass('d-none');
+                    } else {
+                        $('#cardCustomerPhoneWrapper').addClass('d-none');
                     }
-                })();
-            @endif
+
+                    if (address) {
+                        $('#cardCustomerAddress').text(address);
+                        $('#cardCustomerAddressWrapper').removeClass('d-none');
+                    } else {
+                        $('#cardCustomerAddressWrapper').addClass('d-none');
+                    }
+
+                    $('#bannerViewOrderLink').attr('href', "{{ url('customer-orders') }}/" + order.id);
+                    $('#deliveryCustomerCard').removeClass('d-none');
+                    $('#deliveryCustomerCardEmpty').addClass('d-none');
+
+                    // 3. Populate Items Table
+                    $('#salesTableBody').empty();
+                    if (order.items && order.items.length > 0) {
+                        order.items.forEach(function(item, idx) {
+                            $('#salesTableBody').append(renderDeliveryItemRow(item, idx));
+                        });
+                    } else {
+                        $('#salesTableBody').html(`
+                            <tr id="noDeliveryOrderPlaceholder">
+                                <td colspan="7" class="text-center py-4 text-muted bg-white">
+                                    <i class="fas fa-box-open fa-2x text-warning mb-2 d-block opacity-50"></i>
+                                    <span class="fw-bold" style="font-size: 0.9rem;">No items found in this customer order.</span>
+                                </td>
+                            </tr>
+                        `);
+                    }
+
+                    // 4. Discount
+                    if (parseFloat(order.discount) > 0) {
+                        $('#walkinDiscountRs').val(order.discount);
+                    } else {
+                        $('#walkinDiscountRs').val(0);
+                    }
+
+                    // 5. Pre-fill balance due into first payment method
+                    $('#rvWrapper .rv-row:first-child .rv-amount').val(balDue > 0 ? balDue.toFixed(2) : '0.00');
+
+                    // 6. Customer Info Setup
+                    if (order.customer_id) {
+                        $('#walkinToggle').prop('checked', false);
+                        let custText = (order.customer ? order.customer.customer_id : '') + ' — ' + (order.customer ? order.customer.customer_name : (order.customer_display_name || 'Customer'));
+                        $('#customerSelect').html('<option value="' + order.customer_id + '" selected>' + custText + '</option>').val(order.customer_id);
+                        $('#walkinNameInput').val('');
+
+                        $('#address').val(address);
+                        $('#tel').val(phone);
+
+                        $.get("{{ url('sale/customers') }}/" + order.customer_id + "?t=" + new Date().getTime(), function(d) {
+                            if (d) {
+                                const prev = parseFloat(d.previous_balance || 0);
+                                const range = parseFloat(d.balance_range || 0);
+                                $('#previousBalance').val(prev.toFixed(2));
+                                $('#rangeBalance').val(range.toFixed(2));
+                                if (typeof updateGrandTotals === 'function') updateGrandTotals();
+                            }
+                        });
+                    } else {
+                        $('#walkinToggle').prop('checked', true);
+                        $('#walkinNameInput').val(order.walkin_name || 'Walk-in Customer');
+                        $('#customerSelect').html('<option value=""></option>').val('');
+                        $('#tel').val(phone);
+                        $('#address').val(address);
+                        $('#previousBalance').val(0);
+                        $('#rangeBalance').val(0);
+                    }
+
+                    // 7. Update Totals
+                    if (typeof recomputeReceipts === 'function') recomputeReceipts();
+                    if (typeof updateGrandTotals === 'function') updateGrandTotals();
+                    if (typeof refreshPostedState === 'function') refreshPostedState();
+                } finally {
+                    isOrderLoadingInProgress = false;
+                }
+            }
+
+            if (isDeliveryMode) {
+                // If loaded with a specific fromOrder
+                @if (isset($fromOrder) && $fromOrder)
+                    loadOrderIntoDeliveryForm(@json($fromOrder));
+                @endif
+
+                // When user selects an order from the dropdown
+                $('#pendingOrderSelect').on('change', function() {
+                    const selectedId = $(this).val();
+                    if (!selectedId) {
+                        $('#deliveryCustomerCard').addClass('d-none');
+                        $('#deliveryCustomerCardEmpty').removeClass('d-none');
+                        $('#customer_order_id').val('');
+                        $('#orderAdvanceAmountHidden').val(0);
+                        $('#remarks').val('');
+                        $('#walkinNameInput').val('');
+                        $('#customerSelect').html('<option value=""></option>').val('');
+                        $('#salesTableBody').html(`
+                            <tr id="noDeliveryOrderPlaceholder">
+                                <td colspan="7" class="text-center py-4 text-muted bg-white">
+                                    <i class="fas fa-truck fa-2x text-success mb-2 d-block opacity-50"></i>
+                                    <span class="fw-bold" style="font-size: 0.9rem;">Please select an undelivered order above to deliver items.</span>
+                                </td>
+                            </tr>
+                        `);
+                        if (typeof updateGrandTotals === 'function') updateGrandTotals();
+                        return;
+                    }
+                    const order = allPendingOrders.find(o => String(o.id) === String(selectedId));
+                    if (order) {
+                        loadOrderIntoDeliveryForm(order);
+                    }
+                });
+            }
         });
     </script>
 

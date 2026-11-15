@@ -39,6 +39,8 @@ class Category extends Model
 
     public function scopeFinishedGoods($query)
     {
-        return $query->where('is_raw_material', 0);
+        return $query->where(function($q) {
+            $q->where('is_raw_material', 0)->orWhereNull('is_raw_material');
+        });
     }
 }

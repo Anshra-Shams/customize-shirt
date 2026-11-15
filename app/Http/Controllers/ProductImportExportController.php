@@ -90,7 +90,7 @@ class ProductImportExportController extends Controller
             'category_relation',
             'sub_category_relation',
             'brand'
-        ])->orderBy('id');
+        ])->finishedGoods()->orderBy('id');
         
         // Basic filtering
         if ($request->filled('category_id')) {

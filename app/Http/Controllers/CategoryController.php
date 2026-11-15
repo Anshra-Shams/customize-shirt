@@ -11,10 +11,8 @@ class CategoryController extends Controller
     public function index()
     {
         // $userId = Auth::id();
-      $category = Category::get();
+      $category = Category::finishedGoods()->get();
       return  view("admin_panel.category.index",compact('category'));
-
-
     }
 
     public function store(Request $request)
@@ -61,6 +59,7 @@ class CategoryController extends Controller
          */
         $category = new Category();
         $category->name = $request->name;
+        $category->is_raw_material = 0;
         $category->save();
 
         /**

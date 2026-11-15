@@ -453,11 +453,14 @@
                         }
                         grandReturn += returnTotal;
 
+                        let invoiceNo = s.invoice_no || ('INVSLE-' + s.id);
+                        let invoiceLink = `<a href="/sales/${s.id}/invoice" target="_blank" class="font-monospace fw-bold ${s.is_delivery ? 'text-success' : 'text-primary'} text-decoration-none" title="${s.is_delivery ? 'Delivery Invoice' : 'Sale Invoice'}">${invoiceNo}</a>`;
+
                         // Desktop Row
                         html += `<tr data-qty="${rowQty}" data-total="${rowTotal}" data-net="${s.total_net}" data-return="${returnTotal}">
                             <td>${i+1}</td>
                             <td class="small text-nowrap">${s.created_at}</td>
-                            <td class="font-monospace fw-bold text-primary">INVSLE-${s.id}</td>
+                            <td>${invoiceLink}</td>
                             <td>${s.customer_name ?? '-'}</td>
                             <td><span class="badge bg-light text-dark border px-2 py-1"><i class="fas fa-user-circle text-primary me-1"></i>${s.cashier || 'System'}</span></td>
                             <td>${s.reference ?? '-'}</td>
@@ -471,11 +474,11 @@
 
                         // Mobile Card
                         mobHtml += `
-                        <div class="mob-card p-2.5 p-2 mb-2 mob-sale-card" data-search="${(s.product + ' INVSLE-' + s.id + ' ' + (s.customer_name||'') + ' ' + (s.cashier||'') + ' ' + (s.reference||'')).toLowerCase()}">
+                        <div class="mob-card p-2.5 p-2 mb-2 mob-sale-card" data-search="${(s.product + ' ' + invoiceNo + ' ' + (s.customer_name||'') + ' ' + (s.cashier||'') + ' ' + (s.reference||'')).toLowerCase()}">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <div class="d-flex align-items-center gap-1">
                                     <span class="badge bg-light text-muted border" style="font-size: 10px;">#${i+1}</span>
-                                    <span class="badge bg-light text-primary border font-monospace fw-bold" style="font-size: 11px;">INVSLE-${s.id}</span>
+                                    <span class="badge bg-light ${s.is_delivery ? 'text-success' : 'text-primary'} border font-monospace fw-bold" style="font-size: 11px;">${invoiceNo}</span>
                                 </div>
                                 <small class="text-muted" style="font-size: 10.5px;">${s.created_at}</small>
                             </div>

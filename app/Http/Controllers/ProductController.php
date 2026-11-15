@@ -454,7 +454,8 @@ class ProductController extends Controller
             'sub_category_relation',
             'unit',
             'brand',
-        ])->withSum('warehouseStocks', 'total_pieces');
+        ])->withSum('warehouseStocks', 'total_pieces')
+          ->finishedGoods();
 
         // ── Filters ──
         if ($request->filled('search')) {
@@ -479,16 +480,8 @@ class ProductController extends Controller
             $query->where('is_active', $request->status === 'active' ? 1 : 0);
         }
 
-        if ($request->filled('type')) {
-            if ($request->type === 'raw_material') {
-                $query->where(fn($q) => $q->where('is_raw_material', 1)->orWhere('is_part', 1));
-            } elseif ($request->type === 'finished') {
-                $query->where('is_raw_material', 0)->where('is_part', 0);
-            }
-        }
-
         $products   = $query->latest()->paginate(20)->withQueryString();
-        $categories = Category::orderBy('name')->get();
+        $categories = Category::finishedGoods()->orderBy('name')->get();
         $brands     = Brand::orderBy('name')->get();
 
         return view('admin_panel.product.index', compact('products', 'categories', 'brands'));
@@ -730,7 +723,7 @@ class ProductController extends Controller
     // ===== Create page =====
     public function view_store()
     {
-        $categories = Category::select('id', 'name')->get();
+        $categories = Category::finishedGoods()->select('id', 'name')->orderBy('name')->get();
         $units = Unit::select('id', 'name')->get();
         $brands = Brand::select('id', 'name')->get();
 
@@ -752,7 +745,7 @@ class ProductController extends Controller
 
     public function getCategoriesJson()
     {
-        return response()->json(Category::orderBy('name')->get(['id', 'name']));
+        return response()->json(Category::finishedGoods()->orderBy('name')->get(['id', 'name']));
     }
 
     public function getBrandsJson()
@@ -1002,10 +995,10 @@ class ProductController extends Controller
                             'size' => $sizes[$i] ?? '-',
                             'color' => $colors[$i] ?? '-',
                             'stock' => $vStock,
-                            'sale_price' => $sale_prices[$i] ?? 0,
-                            'wholesale_price' => $wholesale_prices[$i] ?? 0,
-                            'weight_per_piece' => $weight_factors[$i] ?? 0,
-                            'purch_price' => $purch_prices[$i] ?? 0,
+                            'sale_price' => (isset($sale_prices[$i]) && $sale_prices[$i] !== '') ? (float)$sale_prices[$i] : 0,
+                            'wholesale_price' => (isset($wholesale_prices[$i]) && $wholesale_prices[$i] !== '') ? (float)$wholesale_prices[$i] : 0,
+                            'weight_per_piece' => (isset($weight_factors[$i]) && $weight_factors[$i] !== '') ? (float)$weight_factors[$i] : 0,
+                            'purch_price' => (isset($purch_prices[$i]) && $purch_prices[$i] !== '') ? (float)$purch_prices[$i] : 0,
                             'alert' => $alerts[$i] ?? 0,
                             'barcode' => $barcodes[$i] ?? '',
                             'conv_factor' => $vConvFactor,
@@ -1415,10 +1408,10 @@ class ProductController extends Controller
                             'color' => $vColor,
                             'stock' => $savedInitial,
                             'orig_initial_stock' => $savedInitial,
-                            'sale_price' => $sale_prices[$i] ?? 0,
-                            'wholesale_price' => $wholesale_prices[$i] ?? 0,
-                            'weight_per_piece' => $weight_factors[$i] ?? 0,
-                            'purch_price' => $purch_prices[$i] ?? 0,
+                            'sale_price' => (isset($sale_prices[$i]) && $sale_prices[$i] !== '') ? (float)$sale_prices[$i] : 0,
+                            'wholesale_price' => (isset($wholesale_prices[$i]) && $wholesale_prices[$i] !== '') ? (float)$wholesale_prices[$i] : 0,
+                            'weight_per_piece' => (isset($weight_factors[$i]) && $weight_factors[$i] !== '') ? (float)$weight_factors[$i] : 0,
+                            'purch_price' => (isset($purch_prices[$i]) && $purch_prices[$i] !== '') ? (float)$purch_prices[$i] : 0,
                             'alert' => $alerts[$i] ?? 0,
                             'barcode' => $barcodes[$i] ?? '',
                             'conv_factor' => $vConvFactor,
@@ -1794,7 +1787,12 @@ class ProductController extends Controller
     {
         $product = Product::with('category_relation', 'sub_category_relation', 'unit', 'brand', 'warehouseStocks')
             ->findOrFail($id);
-        $categories = Category::all();
+        $categories = Category::where(function($q) use ($product) {
+            $q->where('is_raw_material', 0)->orWhereNull('is_raw_material');
+            if ($product->category_id) {
+                $q->orWhere('id', $product->category_id);
+            }
+        })->orderBy('name')->get();
         $subcategories = SubCategory::all();
         $brands = Brand::all();
 
@@ -1856,22 +1854,22 @@ class ProductController extends Controller
                 'width' => 'required|numeric|gt:0',
                 'pieces_per_box' => 'required|integer|gt:0',
                 'boxes_quantity' => 'required|integer|min:0', // Allowed 0 stock
-                'price_per_m2' => 'required|numeric|min:0', // Allowed 0 price
-                'purchase_price_per_m2' => 'required|numeric|min:0',
+                'price_per_m2' => 'nullable|numeric|min:0', // Allowed 0 price / optional
+                'purchase_price_per_m2' => 'nullable|numeric|min:0', // optional
             ]);
         } elseif ($mode === 'by_cartons') {
             $rules = array_merge($rules, [
                 'pieces_per_box' => 'required|integer|min:1',
                 'boxes_quantity' => 'required|integer|min:0',
                 'loose_pieces' => 'nullable|integer|min:0',
-                'sale_price_per_box' => 'required|numeric|min:0',
-                'purchase_price_per_piece' => 'required|numeric|min:0',
+                'sale_price_per_box' => 'nullable|numeric|min:0', // optional
+                'purchase_price_per_piece' => 'nullable|numeric|min:0', // optional
             ]);
         } else {
             $rules = array_merge($rules, [
                 'piece_quantity' => 'required|integer|min:0', // Allowed 0 stock
-                'sale_price_per_box' => 'required|numeric|min:0',
-                'purchase_price_per_piece' => 'required|numeric|min:0',
+                'sale_price_per_box' => 'nullable|numeric|min:0', // optional
+                'purchase_price_per_piece' => 'nullable|numeric|min:0', // optional
             ]);
         }
 

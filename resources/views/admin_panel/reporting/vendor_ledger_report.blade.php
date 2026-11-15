@@ -157,18 +157,26 @@
                     </div>
                 </div>
 
-                {{-- Bottom Section: Vendor, Quick Filter --}}
+                {{-- Bottom Section: Vendor Type, Vendor, Quick Filter --}}
                 <div class="row g-2">
-                    <div class="col-md-7">
+                    <div class="col-md-3">
+                        <label for="vendor_type_desk" class="sale-filter-label mb-1">Vendor Type:</label>
+                        <select name="vendor_type" id="vendor_type_desk" class="form-select form-select-sm vendorTypeSelect" style="height: 34px !important; font-size: .78rem; border-radius: 6px !important; border: 1px solid #cbd5e1 !important; background-color: #ffffff !important;">
+                            <option value="all">-- All Types --</option>
+                            <option value="normal">Normal Vendor</option>
+                            <option value="stitching">Stitching / Tailor</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
                         <label for="vendor_id_desk" class="sale-filter-label mb-1">Vendor:</label>
                         <select name="vendor_id" id="vendor_id_desk" class="form-select form-select-sm select2 vendorSelect">
                             <option value="all">-- All Vendors --</option>
                             @foreach ($vendors as $v)
-                                <option value="{{ $v->id }}">{{ $v->name }}</option>
+                                <option value="{{ $v->id }}">{{ $v->name }} {{ ($v->type ?? 'normal') === 'stitching' ? '(Stitching)' : '' }}</option>
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-md-4">
                         <label for="quick_filter_desk" class="sale-filter-label mb-1 d-block">Quick Filter:</label>
                         <select id="quick_filter_desk" class="form-control form-control-sm quickFilterSelect" style="height: 34px !important; font-size: .78rem; border-radius: 6px !important; border: 1px solid #cbd5e1 !important; background-color: #ffffff !important;">
                             <option value="custom">Custom Range</option>
@@ -195,13 +203,23 @@
                         </span>
                     </div>
 
-                    {{-- 1. Vendor --}}
+                    {{-- 1. Vendor Type --}}
+                    <div class="col-12 mb-1">
+                        <label class="form-label mb-1 fw-bold text-secondary" style="font-size: 11px;">Vendor Type</label>
+                        <select name="vendor_type" class="form-select form-select-sm vendorTypeSelect" style="font-size: 11px; height: 34px !important; border-radius: 6px !important; border: 1px solid #cbd5e1 !important; background-color: #ffffff !important;">
+                            <option value="all">-- All Types --</option>
+                            <option value="normal">Normal Vendor</option>
+                            <option value="stitching">Stitching / Tailor</option>
+                        </select>
+                    </div>
+
+                    {{-- 2. Vendor --}}
                     <div class="col-12 mb-1">
                         <label class="form-label mb-1 fw-bold text-secondary" style="font-size: 11px;">Vendor</label>
                         <select name="vendor_id" class="form-select form-select-sm select2 vendorSelect">
                             <option value="all">-- All Vendors --</option>
                             @foreach ($vendors as $v)
-                                <option value="{{ $v->id }}">{{ $v->name }}</option>
+                                <option value="{{ $v->id }}">{{ $v->name }} {{ ($v->type ?? 'normal') === 'stitching' ? '(Stitching)' : '' }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -356,14 +374,70 @@
 @section('js')
     <script>
         $(document).ready(function() {
+            var allVendorsList = {!! json_encode($vendors) !!};
+
             if ($('.select2').length > 0) {
                 $('.select2').select2({ width: '100%' });
+            }
+
+            function syncAndFilterVendorDropdown(selectedType) {
+                $('.vendorTypeSelect').val(selectedType);
+
+                $('.vendorSelect').each(function() {
+                    var $select = $(this);
+                    var currentVal = $select.val();
+
+                    $select.empty();
+                    var allLabel = '-- All Vendors --';
+                    if (selectedType === 'stitching') {
+                        allLabel = '-- All Stitching Vendors --';
+                    } else if (selectedType === 'normal') {
+                        allLabel = '-- All Normal Vendors --';
+                    }
+                    $select.append(new Option(allLabel, 'all'));
+
+                    allVendorsList.forEach(function(v) {
+                        var vType = v.type || 'normal';
+                        if (selectedType === 'all' || selectedType === vType) {
+                            var label = v.name + (vType === 'stitching' ? ' (Stitching)' : '');
+                            $select.append(new Option(label, v.id));
+                        }
+                    });
+
+                    if (currentVal && $select.find('option[value="' + currentVal + '"]').length > 0) {
+                        $select.val(currentVal);
+                    } else {
+                        $select.val('all');
+                    }
+
+                    if ($select.hasClass('select2-hidden-accessible')) {
+                        $select.trigger('change.select2');
+                    }
+                });
             }
 
             // Sync Inputs between Desktop & Mobile
             $('.startDateInput').on('change', function() { $('.startDateInput').val($(this).val()); });
             $('.endDateInput').on('change', function() { $('.endDateInput').val($(this).val()); });
-            $('.vendorSelect').on('change', function() { $('.vendorSelect').val($(this).val()); });
+            
+            $('.vendorTypeSelect').on('change', function() {
+                var selectedType = $(this).val();
+                syncAndFilterVendorDropdown(selectedType);
+                loadLedger();
+            });
+
+            $('.vendorSelect').on('change', function() {
+                var val = $(this).val();
+                $('.vendorSelect').not(this).each(function() {
+                    if ($(this).val() !== val) {
+                        $(this).val(val);
+                        if ($(this).hasClass('select2-hidden-accessible')) {
+                            $(this).trigger('change.select2');
+                        }
+                    }
+                });
+            });
+
             $('.quickFilterSelect').on('change', function() {
                 let val = $(this).val();
                 $('.quickFilterSelect').val(val);
@@ -406,7 +480,11 @@
             $('.btnResetTrigger').on('click', function() {
                 $('.startDateInput').val('2000-01-01');
                 $('.endDateInput').val('{{ date("Y-m-d") }}');
-                $('.vendorSelect').val('all').trigger('change');
+                syncAndFilterVendorDropdown('all');
+                $('.vendorSelect').val('all');
+                if ($('.vendorSelect').hasClass('select2-hidden-accessible')) {
+                    $('.vendorSelect').trigger('change.select2');
+                }
                 $('.quickFilterSelect').val('custom');
                 loadLedger();
             });
@@ -414,6 +492,7 @@
             $('.btnPrintReport').on('click', () => window.print());
 
             function loadLedger() {
+                let vType = $(".vendorTypeSelect").val() || 'all';
                 let vid = $(".vendorSelect").val();
                 let start = $(".startDateInput").val() || '2000-01-01';
                 let end = $(".endDateInput").val() || '{{ date("Y-m-d") }}';
@@ -422,6 +501,7 @@
                 $("#ledgerBox").hide();
 
                 $.get("{{ route('report.vendor.ledger.fetch') }}", {
+                    vendor_type: vType,
                     vendor_id: vid || 'all',
                     start_date: start,
                     end_date: end
@@ -432,10 +512,20 @@
                     let displayStart = formatDisplayDate(start);
                     let displayEnd = formatDisplayDate(end);
 
+                    let typeBadge = '';
+                    if (res.vendor && res.vendor.type === 'stitching') {
+                        typeBadge = '<span class="badge ms-2 text-white" style="background-color: #7c3aed; font-size: 11px;"><i class="fas fa-cut me-1"></i>Stitching / Tailor</span>';
+                    } else if (res.vendor && res.vendor.type === 'normal') {
+                        typeBadge = '<span class="badge ms-2 bg-secondary" style="font-size: 11px;"><i class="fas fa-truck me-1"></i>Normal Vendor</span>';
+                    }
+
                     // Build Header
                     $("#ledgerHeader").html(`
                         <div>
-                            <h6 class="fw-bold text-dark mb-0">${res.vendor.name}</h6>
+                            <div class="d-flex align-items-center flex-wrap gap-1">
+                                <h6 class="fw-bold text-dark mb-0">${res.vendor.name}</h6>
+                                ${typeBadge}
+                            </div>
                             <small class="text-muted">Period: <strong>${displayStart}</strong> to <strong>${displayEnd}</strong></small>
                         </div>
                         <div>
@@ -485,13 +575,17 @@
                         let balLabel = lastBalance >= 0 ? 'Cr' : 'Dr';
                         let balClass = lastBalance >= 0 ? 'balance-negative' : 'balance-positive';
                         let vendName = t.vendor_name || '-';
+                        let vendBadge = '';
+                        if (t.vendor_type === 'stitching') {
+                            vendBadge = ' <span class="badge text-white ms-1" style="background-color: #7c3aed; font-size: 9.5px; padding: 2px 5px;"><i class="fas fa-cut me-0.5"></i> Stitching</span>';
+                        }
 
                         // Desktop Row
                         html += `
                             <tr>
                                 <td class="text-center small text-nowrap">${t.date}</td>
                                 <td class="text-center"><span class="badge bg-light text-primary border font-monospace">${t.invoice ?? '-'}</span></td>
-                                <td class="fw-bold text-dark">${vendName}</td>
+                                <td class="fw-bold text-dark">${vendName}${vendBadge}</td>
                                 <td class="text-start">${t.description}</td>
                                 <td class="text-end text-success fw-semibold">${debit > 0 ? 'Rs ' + debit.toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}</td>
                                 <td class="text-end text-danger fw-semibold">${credit > 0 ? 'Rs ' + credit.toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}</td>
@@ -510,13 +604,13 @@
                                     <small class="text-muted" style="font-size: 10.5px;">${t.date}</small>
                                 </div>
                                 <div class="mb-1">
-                                    <strong class="text-dark d-block" style="font-size: 12.5px;">${vendName}</strong>
+                                    <strong class="text-dark d-block" style="font-size: 12.5px;">${vendName}${vendBadge}</strong>
                                     <small class="text-muted d-block" style="font-size: 11px;">${t.description}</small>
                                 </div>
                                 <div class="border-top pt-2 mt-1">
                                     <div class="row g-1 text-center" style="font-size: 11px;">
                                         <div class="col-4 border-end">
-                                            <span class="text-muted d-block" style="font-size: 10px;">Debit (Dr)</span>
+                                             <span class="text-muted d-block" style="font-size: 10px;">Debit (Dr)</span>
                                             <strong class="text-success">${debit > 0 ? 'Rs ' + debit.toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}</strong>
                                         </div>
                                         <div class="col-4 border-end">

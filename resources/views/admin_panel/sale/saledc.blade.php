@@ -208,6 +208,15 @@
 
 <body>
 
+    @php
+        $isOrderDelivery = ($sale->customerOrder ?? false)
+            || str_contains($sale->reference ?? '', 'Customer Order')
+            || str_contains($sale->reference ?? '', 'ORD-')
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists()
+            || request('from') === 'order';
+        $backUrl = $isOrderDelivery ? route('customer_orders.index') : route('sale.index');
+    @endphp
+
     <!-- Print Button -->
     <div class="print-btn-container">
         <button onclick="window.print()" class="btn btn-primary btn-sm shadow">
@@ -219,7 +228,7 @@
             </svg>
             Print
         </button>
-        <a href="{{ route('sale.index') }}" class="btn btn-secondary btn-sm shadow ms-2">Back</a>
+        <a href="{{ $backUrl }}" class="btn btn-secondary btn-sm shadow ms-2">Back</a>
     </div>
 
     <div class="invoice-container">

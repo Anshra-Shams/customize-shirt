@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Thermal Receipt - {{ $sale->invoice_no }}</title>
+    <title>{{ ($sale->customerOrder || str_contains($sale->reference ?? '', 'Customer Order')) ? 'Delivery Receipt' : 'Thermal Receipt' }} - {{ $sale->invoice_no }}</title>
     <style>
         @media print {
             @page {
@@ -276,11 +276,18 @@
 </head>
 
     @php
+        $isOrderDelivery = ($sale->customerOrder ?? false)
+            || str_contains($sale->reference ?? '', 'Customer Order')
+            || str_contains($sale->reference ?? '', 'ORD-')
+            || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists()
+            || request('from') === 'order';
         $fromPos = request()->query('from') === 'pos' || empty(request()->query('from'));
+        $receiptBackUrl = $isOrderDelivery ? route('customer_orders.index') : route('pos.index');
+        $receiptBackText = $isOrderDelivery ? '⬅️ Order List' : '⬅️ POS Next';
     @endphp
 
     <div class="print-controls no-print" style="width: 76mm; margin: 10px auto 14px auto; display: flex; flex-direction: column; gap: 8px;">
-        @if($fromPos)
+        @if($fromPos && !$isOrderDelivery)
         <div id="countdownBanner" style="background: #0f172a; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 10px rgba(0,0,0,0.12);">
             <div style="display: flex; align-items: center; gap: 6px;">
                 <span>⚡</span>
@@ -288,11 +295,19 @@
             </div>
             <button type="button" id="btnPause" onclick="togglePause()" style="background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; cursor: pointer; font-weight: 600;">Stay Here</button>
         </div>
+        @elseif($isOrderDelivery)
+        <div id="countdownBanner" style="background: #064e3b; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 11.5px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 10px rgba(0,0,0,0.12);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span>🚚</span>
+                <span>Auto Order List in <strong id="secondsLeft" style="color: #6ee7b7; font-size: 13px;">3</strong>s</span>
+            </div>
+            <button type="button" id="btnPause" onclick="togglePause()" style="background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; cursor: pointer; font-weight: 600;">Stay Here</button>
+        </div>
         @endif
 
         <div style="display: flex; gap: 6px;">
             <a href="javascript:void(0)" onclick="triggerPrint()" class="btn btn-primary" style="flex: 1; padding: 7px 4px; font-size: 11px; border-radius: 5px; text-decoration: none; text-align: center; background: #000; color: #fff; font-weight: 600;">🖨️ Print Receipt</a>
-            <a href="{{ route('pos.index') }}" class="btn btn-secondary" style="flex: 1; padding: 7px 4px; font-size: 11px; border-radius: 5px; text-decoration: none; text-align: center; background: #2563eb; color: #fff; font-weight: 600;">⬅️ POS Next</a>
+            <a href="{{ $receiptBackUrl }}" class="btn btn-secondary" style="flex: 1; padding: 7px 4px; font-size: 11px; border-radius: 5px; text-decoration: none; text-align: center; background: #2563eb; color: #fff; font-weight: 600;">{{ $receiptBackText }}</a>
         </div>
     </div>
 
@@ -328,7 +343,14 @@
         </div>
         @endif
 
+        @php
+            $isOrderDelivery = $sale->customerOrder || str_contains($sale->reference ?? '', 'Customer Order');
+        @endphp
+        @if ($isOrderDelivery)
+        <div class="policy-banner" style="background:#10b981; color:#fff; font-weight:bold; font-size:12px; letter-spacing:0.5px;">ORDER DELIVERY RECEIPT</div>
+        @else
         <div class="policy-banner">No Return, Only Exchange in 3 days</div>
+        @endif
 
         <div class="divider"></div>
 
@@ -338,7 +360,7 @@
         @endphp
         <div class="meta-grid">
             <div class="meta-row">
-                <span class="meta-label">Invoice #:</span>
+                <span class="meta-label">{{ $isOrderDelivery ? 'Delivery #:' : 'Invoice #:' }}</span>
                 <span class="meta-value">{{ $sale->invoice_no }}</span>
             </div>
             <div class="meta-row">
@@ -524,6 +546,19 @@
 
             @php
                 $finalPayable = $sale->total_net - $exchangeReturnedAmount;
+
+                $linkedOrder = $sale->customerOrder ?: \App\Models\CustomerOrder::where('sale_id', $sale->id)->first();
+                $orderAdvance = 0;
+                $orderDeliveryPaid = 0;
+                if ($linkedOrder) {
+                    $orderAdvance = (float)($linkedOrder->advance_amount ?? 0);
+                    $orderDeliveryPaid = (float)($linkedOrder->delivery_payment_amount ?? 0);
+                }
+
+                $receiptPaid = (float)($sale->cash ?? 0);
+                if ($receiptPaid <= 0 && $linkedOrder) {
+                    $receiptPaid = $orderAdvance + $orderDeliveryPaid;
+                }
             @endphp
             <div class="tot-row grand-total">
                 @if($finalPayable < 0)
@@ -544,9 +579,15 @@
                 <span>{{ number_format(abs($previousBalance), 0) }} {{ $previousBalance >= 0 ? 'Dr' : 'Cr' }}</span>
             </div>
             @endif
+            @if($orderAdvance > 0)
+            <div class="tot-row">
+                <span>Advance Paid:</span>
+                <span>{{ number_format($orderAdvance, 0) }}</span>
+            </div>
+            @endif
             <div class="tot-row">
                 <span>Paid Amount:</span>
-                <span>{{ number_format($sale->cash, 0) }}</span>
+                <span>{{ number_format($receiptPaid, 0) }}</span>
             </div>
             @if($sale->change > 0)
             <div class="tot-row">
@@ -557,11 +598,11 @@
 
             @if(!$isWalkin)
             @php
-                $finalBalance = $previousBalance + $sale->total_net - $sale->cash;
+                $finalBalance = $previousBalance + $sale->total_net - $receiptPaid;
             @endphp
             <div class="tot-row closing-bal">
                 <span>CLOSING BALANCE:</span>
-                <span>{{ number_format(abs($finalBalance), 0) }} {{ $finalBalance >= 0 ? 'Dr' : 'Cr' }}</span>
+                <span>{{ number_format(abs($finalBalance), 0) }} {{ round($finalBalance, 2) == 0 ? '' : ($finalBalance > 0 ? 'Dr' : 'Cr') }}</span>
             </div>
             @endif
         </div>
@@ -592,7 +633,7 @@
                 }
                 if (countdown <= 0) {
                     clearInterval(countdownInterval);
-                    window.location.href = "{{ route('pos.index') }}";
+                    window.location.href = "{{ $receiptBackUrl }}";
                 }
             }, 1000);
         }

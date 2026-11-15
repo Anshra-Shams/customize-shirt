@@ -242,10 +242,6 @@
                 <i class="fas fa-shopping-cart"></i>
                 <span>Purchases</span>
             </a>
-            <a href="{{ route('warehouse_stocks.index') }}" class="btn btn-outline-info d-inline-flex align-items-center gap-2 shadow-sm">
-                <i class="fas fa-warehouse"></i>
-                <span>Warehouse Stock</span>
-            </a>
         </div>
     </div>
 
@@ -449,14 +445,27 @@
                                             data-active="{{ $item->is_active ? 1 : 0 }}">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <form action="{{ route('raw_materials.destroy', $item->id) }}" method="POST" class="d-inline"
-                                          onsubmit="return confirm('Are you sure you want to delete this raw material?');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="btn btn-outline-danger" title="Delete Material">
-                                            <i class="fas fa-trash"></i>
+                                    @if($item->is_active)
+                                        <button type="button" class="btn btn-outline-warning btn-toggle-mat" 
+                                                title="Deactivate Material"
+                                                data-id="{{ $item->id }}"
+                                                data-name="{{ $item->item_name }}"
+                                                data-code="{{ $item->item_code }}"
+                                                data-action="deactivate"
+                                                data-url="{{ route('raw_materials.toggle_active', $item->id) }}">
+                                            <i class="fas fa-ban"></i>
                                         </button>
-                                    </form>
+                                    @else
+                                        <button type="button" class="btn btn-outline-success btn-toggle-mat" 
+                                                title="Activate Material"
+                                                data-id="{{ $item->id }}"
+                                                data-name="{{ $item->item_name }}"
+                                                data-code="{{ $item->item_code }}"
+                                                data-action="activate"
+                                                data-url="{{ route('raw_materials.toggle_active', $item->id) }}">
+                                            <i class="fas fa-check-circle"></i>
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -503,13 +512,6 @@
 
                 <div class="modal-body">
                     <div class="row g-3">
-                        {{-- Material Name --}}
-                        <div class="col-md-6">
-                            <label class="form-label">Material Name <span class="text-danger">*</span></label>
-                            <input type="text" name="item_name" id="modal_item_name" class="form-control" 
-                                   placeholder="e.g. Cotton Fabric 60/60 White" required>
-                        </div>
-
                         {{-- Material Code --}}
                         <div class="col-md-6">
                             <label class="form-label">Material Code <span class="text-danger">*</span></label>
@@ -534,6 +536,13 @@
                                     +
                                 </button>
                             </div>
+                        </div>
+
+                        {{-- Material Name --}}
+                        <div class="col-md-6">
+                            <label class="form-label">Material Name <span class="text-danger">*</span></label>
+                            <input type="text" name="item_name" id="modal_item_name" class="form-control" 
+                                   placeholder="e.g. Cotton Fabric 60/60 White" required>
                         </div>
 
                         {{-- Base Unit --}}
@@ -752,6 +761,60 @@
             document.querySelectorAll('[data-dismiss="modal"], [data-bs-dismiss="modal"]').forEach(function (btn) {
                 btn.addEventListener('click', function (e) {
                     closeRawModal();
+                });
+            });
+
+            // SweetAlert Deactivate / Activate Confirmation for Raw Materials
+            document.querySelectorAll('.btn-toggle-mat').forEach(function (button) {
+                button.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var id = this.dataset.id;
+                    var name = this.dataset.name || 'this raw material';
+                    var code = this.dataset.code ? ' (' + this.dataset.code + ')' : '';
+                    var action = this.dataset.action; // 'deactivate' or 'activate'
+                    var url = this.dataset.url;
+
+                    var isDeactivate = (action === 'deactivate');
+                    var titleText = isDeactivate ? 'Deactivate Raw Material?' : 'Activate Raw Material?';
+                    var htmlText = isDeactivate
+                        ? 'Are you sure you want to deactivate <b>\'' + name + code + '\'</b>?<br><small class="text-muted">It will be disabled in purchase item selections.</small>'
+                        : 'Are you sure you want to activate <b>\'' + name + code + '\'</b>?<br><small class="text-muted">It will be enabled in purchase item selections.</small>';
+                    var confirmBtnColor = isDeactivate ? '#f59e0b' : '#10b981';
+                    var confirmBtnText = isDeactivate ? '<i class="fas fa-ban me-1"></i> Yes, Deactivate' : '<i class="fas fa-check-circle me-1"></i> Yes, Activate';
+
+                    function submitAction() {
+                        var form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = url;
+                        var tokenInput = document.createElement('input');
+                        tokenInput.type = 'hidden';
+                        tokenInput.name = '_token';
+                        tokenInput.value = '{{ csrf_token() }}';
+                        form.appendChild(tokenInput);
+                        document.body.appendChild(form);
+                        form.submit();
+                    }
+
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: titleText,
+                            html: htmlText,
+                            icon: isDeactivate ? 'warning' : 'question',
+                            showCancelButton: true,
+                            confirmButtonColor: confirmBtnColor,
+                            cancelButtonColor: '#6b7280',
+                            confirmButtonText: confirmBtnText,
+                            cancelButtonText: 'Cancel',
+                            reverseButtons: true,
+                            focusCancel: true
+                        }).then(function (result) {
+                            if (result.isConfirmed) {
+                                submitAction();
+                            }
+                        });
+                    } else if (confirm(titleText + ' ' + name + code)) {
+                        submitAction();
+                    }
                 });
             });
 

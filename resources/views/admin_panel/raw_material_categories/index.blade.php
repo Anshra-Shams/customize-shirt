@@ -235,11 +235,13 @@
                                             data-name="{{ $cat->name }}">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <form action="{{ route('raw_material_categories.destroy', $cat->id) }}" method="POST" class="d-inline"
-                                          onsubmit="return confirm('Are you sure you want to delete category \'{{ $cat->name }}\'?');">
+                                    <form action="{{ route('raw_material_categories.destroy', $cat->id) }}" method="POST" class="d-inline" id="deleteCatForm{{ $cat->id }}">
                                         @csrf
                                         @method('DELETE')
-                                        <button type="submit" class="btn btn-outline-danger" title="Delete Category">
+                                        <button type="button" class="btn btn-outline-danger btn-delete-cat" 
+                                                title="Delete Category"
+                                                data-id="{{ $cat->id }}"
+                                                data-name="{{ $cat->name }}">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </form>
@@ -381,6 +383,37 @@
             document.querySelectorAll('[data-dismiss="modal"], [data-bs-dismiss="modal"]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     closeCatModal();
+                });
+            });
+
+            // SweetAlert Delete Confirmation
+            document.querySelectorAll('.btn-delete-cat').forEach(function (button) {
+                button.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var id = this.dataset.id;
+                    var name = this.dataset.name || 'this category';
+                    var form = document.getElementById('deleteCatForm' + id);
+
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: 'Delete Category?',
+                            html: 'Are you sure you want to delete category <b>\'' + name + '\'</b>?<br><small class="text-muted">This action cannot be undone.</small>',
+                            icon: 'warning',
+                            showCancelButton: true,
+                            confirmButtonColor: '#ef4444',
+                            cancelButtonColor: '#6b7280',
+                            confirmButtonText: '<i class="fas fa-trash me-1"></i> Yes, Delete',
+                            cancelButtonText: 'Cancel',
+                            reverseButtons: true,
+                            focusCancel: true
+                        }).then(function (result) {
+                            if (result.isConfirmed && form) {
+                                form.submit();
+                            }
+                        });
+                    } else if (confirm('Are you sure you want to delete category \'' + name + '\'?')) {
+                        if (form) form.submit();
+                    }
                 });
             });
 

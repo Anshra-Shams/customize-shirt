@@ -418,16 +418,37 @@ class SaleController extends Controller
     /**
      * Convert and deliver a Customer Order through the Sale creation interface.
      */
-    public function convertFromOrder($id)
+    public function convertFromOrder($id = null)
     {
-        $order = CustomerOrder::with(['customer', 'items.product.unit', 'items.product.brand', 'creator'])->findOrFail($id);
+        $order = null;
+        if ($id) {
+            $order = CustomerOrder::with(['customer', 'items.product.unit', 'items.product.brand', 'creator'])->findOrFail($id);
+        }
+
+        // Fetch all undelivered customer orders for dropdown selection
+        $undeliveredOrders = CustomerOrder::with(['customer', 'items.product.unit', 'items.product.brand'])
+            ->where(function($q) use ($id) {
+                $q->whereNotIn('status', ['delivered', 'cancelled']);
+                if ($id) {
+                    $q->orWhere('id', $id);
+                }
+            })
+            ->orderByDesc('id')
+            ->get();
 
         $customer = Customer::all();
         $warehouse = Warehouse::all();
         
+        // Ensure DEL series exists for deliveries, or fallback
+        \App\Models\InvoiceSeries::firstOrCreate(['prefix' => 'DEL'], [
+            'next_number' => 1,
+            'padding' => 4,
+            'is_default' => 0
+        ]);
+
         $allSeries = \App\Models\InvoiceSeries::orderBy('prefix', 'asc')->get();
-        $defaultSeries = $allSeries->where('is_default', 1)->first() ?: $allSeries->first();
-        $activePrefix = $defaultSeries ? $defaultSeries->prefix : 'INV';
+        $delSeries = $allSeries->where('prefix', 'DEL')->first();
+        $activePrefix = $delSeries ? 'DEL' : ($allSeries->where('is_default', 1)->first()->prefix ?? 'INV');
         $nextInvoiceNumber = \App\Models\InvoiceSeries::generateNextNo($activePrefix);
 
         $recentProducts = Product::latest()->take(12)->get();
@@ -438,9 +459,11 @@ class SaleController extends Controller
             ->orderBy('title')
             ->get();
 
+        $isDelivery = true;
+
         return view('admin_panel.sale.add_sale222', compact(
             'warehouse', 'customer', 'nextInvoiceNumber', 'accounts',
-            'recentProducts', 'allSeries', 'activePrefix'
+            'recentProducts', 'allSeries', 'activePrefix', 'undeliveredOrders', 'isDelivery'
         ))->with('fromOrder', $order);
     }
 
@@ -1581,7 +1604,28 @@ class SaleController extends Controller
             $sale->total_net = $total_bill - $sale->total_extradiscount;
             $sale->total_items = $total_items;
 
-            $sale->cash = $request->cash ?? 0;
+            // Calculate actual paid amount from payment methods or order advance
+            $receiptAmounts = (array) $request->input('receipt_amount', []);
+            $totalReceipts = array_sum(array_map('floatval', $receiptAmounts));
+
+            $orderAdvance = 0;
+            if ($request->filled('customer_order_id')) {
+                $cOrder = \App\Models\CustomerOrder::find($request->customer_order_id);
+                if ($cOrder) {
+                    $orderAdvance = (float) ($cOrder->advance_amount ?? 0);
+                }
+            } elseif ($request->filled('order_advance_amount')) {
+                $orderAdvance = (float) $request->order_advance_amount;
+            }
+
+            if ($request->filled('cash') && (float) $request->cash > 0) {
+                $sale->cash = (float) $request->cash + $orderAdvance;
+            } elseif ($totalReceipts > 0 || $orderAdvance > 0) {
+                $sale->cash = $totalReceipts + $orderAdvance;
+            } else {
+                $sale->cash = 0;
+            }
+
             $sale->change = ($sale->cash - $sale->total_net);
 
             $sale->save();
@@ -2003,17 +2047,24 @@ class SaleController extends Controller
                     $cOrder->delivery_payment_amount = $delTotal;
                     $cOrder->delivery_payment_methods = $deliveryMethods;
                     $cOrder->save();
+                    \App\Models\SystemNotification::resolveOrderNotifications($cOrder->id);
                 }
             }
 
             // If AJAX/JSON response needed
             if ($request->ajax() || $request->wantsJson()) {
+                $isCustomerOrderDelivery = $request->filled('customer_order_id')
+                    || (!empty($sale->reference) && str_contains($sale->reference, 'Customer Order'))
+                    || \App\Models\CustomerOrder::where('sale_id', $sale->id)->exists();
+
+                $invoiceUrl = $isCustomerOrderDelivery ? route('sales.invoice', $sale->id) : (route('sales.receipt', $sale->id) . '?from=pos');
                 $receiptUrl = route('sales.receipt', $sale->id) . '?from=pos';
+
                 return response()->json([
                     'ok' => true,
                     'booking_id' => $sale->id,
-                    'msg' => 'Sale '.ucfirst($status).' Successfully',
-                    'invoice_url' => $receiptUrl,
+                    'msg' => $isCustomerOrderDelivery ? 'Order Delivered Successfully' : ('Sale '.ucfirst($status).' Successfully'),
+                    'invoice_url' => $invoiceUrl,
                     'receipt_url' => $receiptUrl,
                 ]);
             }
@@ -2304,7 +2355,9 @@ class SaleController extends Controller
     {
         // Legacy support wrapper or direct relation
         // Re-implementing correctly based on new structure
-        return $sale->items->map(function ($item) {
+        $isCustOrder = ($sale->customerOrder || str_contains($sale->reference ?? '', 'Customer Order'));
+
+        return $sale->items->map(function ($item) use ($isCustOrder) {
             $variant = [];
             if (!empty($item->color)) {
                 // Try base64 decode first (since frontend sends base64 variant_data in color field)
@@ -2329,7 +2382,9 @@ class SaleController extends Controller
             return [
                 'is_manual' => $item->is_manual,
                 'product_id' => $item->product_id,
-                'item_name' => $item->is_manual ? ($item->product_name ?? 'Manual Product') . ' (Manual)' : ($item->product_name ?? $item->product->item_name ?? 'Item'),
+                'item_name' => $isCustOrder
+                    ? ($item->product_name ?? ($item->product->item_name ?? 'Item'))
+                    : ($item->is_manual ? ($item->product_name ?? 'Manual Product') . ' (Manual)' : ($item->product_name ?? $item->product->item_name ?? 'Item')),
                 'item_code' => $item->product->item_code ?? '',
                 'brand' => $item->product->brand->name ?? '',
                 'unit' => $item->product->unit->name ?? '', // Access name if relation exists

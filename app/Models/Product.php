@@ -83,8 +83,11 @@ class Product extends Model
     public function scopeFinishedGoods($q)
     {
         return $q->where(function ($query) {
-            $query->where('is_raw_material', 0)
-                  ->where('is_part', 0);
+            $query->where(function($sub) {
+                $sub->where('is_raw_material', 0)->orWhereNull('is_raw_material');
+            })->where(function($sub) {
+                $sub->where('is_part', 0)->orWhereNull('is_part');
+            });
         });
     }
 
@@ -96,10 +99,12 @@ class Product extends Model
     protected static function booted()
     {
         static::saved(function ($product) {
-            if (!is_null($product->alert_quantity)) {
-                $totalPieces = \App\Models\WarehouseStock::where('product_id', $product->id)->sum('total_pieces');
-                if ($totalPieces < $product->alert_quantity) {
+            if (!is_null($product->alert_quantity) && $product->alert_quantity !== '') {
+                $totalPieces = (float) \App\Models\WarehouseStock::where('product_id', $product->id)->sum('total_pieces');
+                if ($totalPieces <= (float) $product->alert_quantity) {
                     \App\Models\SystemNotification::createStockAlertNotification($product, $totalPieces);
+                } else {
+                    \App\Models\SystemNotification::resolveStockAlertNotification($product->id);
                 }
             }
         });

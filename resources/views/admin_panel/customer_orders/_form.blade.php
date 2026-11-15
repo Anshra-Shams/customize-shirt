@@ -354,56 +354,99 @@
     }
     .co-mat-col-headers {
         display: grid;
-        grid-template-columns: 180px 1fr 120px 38px;
-        gap: 10px;
+        grid-template-columns: 130px 1fr 95px 105px 100px 36px;
+        gap: 8px;
         margin-bottom: 6px;
-        font-size: 12px;
+        font-size: 11.5px;
         color: #64748b;
         font-weight: 600;
     }
     .co-mat-item-wrap {
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     }
     .co-mat-item-row {
         display: grid;
-        grid-template-columns: 180px 1fr 120px 38px;
-        gap: 10px;
+        grid-template-columns: 130px 1fr 95px 105px 100px 36px;
+        gap: 8px;
+        align-items: center;
+    }
+    .co-stitch-col-headers {
+        display: grid;
+        grid-template-columns: 1fr 100px 105px 105px 36px;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 11.5px;
+        color: #64748b;
+        font-weight: 600;
+    }
+    .co-stitch-item-wrap {
+        margin-bottom: 8px;
+    }
+    .co-stitch-item-row {
+        display: grid;
+        grid-template-columns: 1fr 100px 105px 105px 36px;
+        gap: 8px;
         align-items: center;
     }
     .co-mat-item-row select,
-    .co-mat-item-row input {
+    .co-mat-item-row input,
+    .co-stitch-item-row select,
+    .co-stitch-item-row input {
         height: 38px !important;
         border: 1.5px solid #cbd5e1 !important;
         border-radius: 8px !important;
-        padding: 6px 11px !important;
+        padding: 6px 9px !important;
         font-size: 13px !important;
         color: #0f172a !important;
         background: #ffffff !important;
         width: 100%;
         transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
+    .co-mat-item-row .input-group,
+    .co-stitch-item-row .input-group {
+        height: 38px !important;
+    }
+    .co-mat-item-row .input-group input,
+    .co-stitch-item-row .input-group input {
+        border-top-right-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+    }
+    .co-mat-item-row .input-group-text,
+    .co-stitch-item-row .input-group-text {
+        height: 38px !important;
+        border: 1.5px solid #cbd5e1 !important;
+        border-left: none !important;
+        border-top-right-radius: 8px !important;
+        border-bottom-right-radius: 8px !important;
+        background-color: #f8fafc !important;
+    }
     .co-mat-item-row select:focus,
-    .co-mat-item-row input:focus {
+    .co-mat-item-row input:focus,
+    .co-stitch-item-row select:focus,
+    .co-stitch-item-row input:focus {
         border-color: #2563eb !important;
         box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12) !important;
         outline: none !important;
     }
-    .co-mat-row-mat-col {
+    .co-mat-row-mat-col,
+    .co-stitch-row-vendor-col {
         display: flex;
         flex-direction: column;
         gap: 4px;
         width: 100%;
     }
-    @media (max-width: 650px) {
-        .co-mat-col-headers {
+    @media (max-width: 768px) {
+        .co-mat-col-headers,
+        .co-stitch-col-headers {
             display: none;
         }
-        .co-mat-item-row {
+        .co-mat-item-row,
+        .co-stitch-item-row {
             grid-template-columns: 1fr;
             gap: 6px;
         }
         .co-mat-summary-grid {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, 1fr) !important;
         }
     }
     .co-mat-custom-caption {
@@ -414,9 +457,10 @@
         padding-left: 4px;
         letter-spacing: 0.2px;
     }
-    .co-mat-row-del {
-        width: 38px;
-        height: 38px;
+    .co-mat-row-del,
+    .co-stitch-row-del {
+        width: 36px;
+        height: 36px;
         border-radius: 8px;
         border: 1px solid #fecaca;
         background: #fff5f5;
@@ -426,7 +470,8 @@
         justify-content: center;
         cursor: pointer;
     }
-    .co-mat-row-del:hover {
+    .co-mat-row-del:hover,
+    .co-stitch-row-del:hover {
         background: #fee2e2;
         border-color: #f87171;
     }
@@ -452,7 +497,7 @@
     .co-mat-summary-grid {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 10px;
+        gap: 8px;
         margin-top: 16px;
     }
     .co-mat-summary-box {
@@ -462,12 +507,13 @@
         padding: 10px 12px;
     }
     .co-mat-summary-box .label {
-        font-size: 12px;
+        font-size: 11.5px;
         color: #64748b;
         margin-bottom: 3px;
+        font-weight: 500;
     }
     .co-mat-summary-box .value {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
         color: #0f172a;
     }
@@ -502,7 +548,7 @@
     $orderNoValue = old('order_no', $isEdit ? $order->order_no : ($nextOrderNo ?? ''));
     $orderDateValue = old('order_date', $isEdit && $order->order_date ? $order->order_date->format('Y-m-d') : date('Y-m-d'));
     $deliveryDateValue = old('delivery_date', $isEdit && $order->delivery_date ? $order->delivery_date->format('Y-m-d') : '');
-    $statusValue = old('status', $isPrepare ? 'in_progress' : ($isEdit ? $order->status : 'pending'));
+    $statusValue = old('status', $isPrepare ? 'ready' : ($isEdit ? $order->status : 'pending'));
     $descValue = old('description', $isEdit ? $order->description : '');
     $discountValue = old('discount', $isEdit ? $order->discount : 0);
     $advanceValue = old('advance_amount', $isEdit ? $order->advance_amount : 0);
@@ -565,6 +611,24 @@
             'price' => (float) ($mat->purchase_price_per_piece ?? 0),
             'unit_name' => optional($mat->unit)->name ?: 'Pcs',
             'stock' => (float) ($mat->warehouse_stocks_sum_total_pieces ?? 0),
+        ];
+    })->values();
+
+    $preparedStitchingVendors = collect($stitchingVendors ?? [])->map(function ($v) {
+        return [
+            'id' => (int) $v->id,
+            'name' => $v->name,
+            'phone' => $v->phone,
+            'type' => $v->type ?? 'stitching',
+        ];
+    })->values();
+
+    $preparedAllVendors = collect($allVendors ?? ($stitchingVendors ?? []))->map(function ($v) {
+        return [
+            'id' => (int) $v->id,
+            'name' => $v->name,
+            'phone' => $v->phone,
+            'type' => $v->type ?? 'normal',
         ];
     })->values();
 
@@ -637,7 +701,7 @@
     @if ($isPrepare)
         <div class="alert alert-primary py-2 px-3 mb-3 small d-flex align-items-center gap-2">
             <i class="bi bi-check2-square fs-6"></i>
-            <span>Please verify the customer order items, materials, and delivery date below, then click <strong>Confirm In Preparing</strong>.</span>
+            <span>Please verify the customer order items, materials, and delivery date below, then click <strong>Confirm & Mark Ready</strong>.</span>
         </div>
     @endif
 
@@ -882,7 +946,7 @@
                     </div>
                     <hr class="my-2 border-secondary">
                     <div class="row py-1 align-items-center">
-                        <div class="col-6 fw-bold fs-5 text-primary">Estimated Total</div>
+                        <div class="col-6 fw-bold fs-5 text-primary">Total</div>
                         <div class="col-6 text-end fw-bold fs-5 text-primary">Rs <span id="summaryGrandTotal">0.00</span></div>
                     </div>
                     <div class="row py-1 mt-1 align-items-center">
@@ -968,7 +1032,7 @@
     <button type="submit" class="btn co-btn-primary">
         <i class="bi bi-check-circle me-1"></i>
         @if ($isPrepare)
-            Confirm In Preparing
+            Confirm & Mark Ready
         @elseif ($isEdit)
             Update Order
         @else
@@ -1039,38 +1103,68 @@
 @if ($isPrepare)
     <!-- Order Item Materials Modal -->
     <div class="modal fade" id="orderMaterialsModal" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 740px;">
-            <div class="modal-content">
-                <div class="co-mat-modal-header">
-                    <h5 class="co-mat-modal-title">Materials and services &middot; <span id="coMatModalItemLabel" class="text-primary">Order Item</span></h5>
-                    <button type="button" class="co-mat-modal-close" id="coMatModalCloseBtn" aria-label="Close">
-                        <i class="bi bi-x-lg"></i>
-                    </button>
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 840px;">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
+                <div class="co-mat-modal-header d-flex align-items-center justify-content-between px-4 py-3 border-bottom bg-white">
+                    <h5 class="co-mat-modal-title mb-0 fw-bold fs-6">
+                        <i class="fas fa-layer-group text-primary me-2"></i>Materials and services &middot; <span id="coMatModalItemLabel" class="text-primary">Order Item</span>
+                    </h5>
+                    <button type="button" class="co-mat-modal-close btn-close" id="coMatModalCloseBtn" aria-label="Close"></button>
                 </div>
-                <div class="modal-body px-4 pt-2 pb-3">
+                <div class="modal-body px-4 pt-3 pb-3" style="max-height: calc(85vh - 140px); overflow-y: auto;">
+                    
+                    {{-- 1. Raw Materials Section --}}
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.5px;">
+                            <i class="fas fa-boxes text-secondary me-1"></i> Raw Materials
+                        </div>
+                    </div>
+
                     <div class="co-mat-col-headers">
                         <div>Category</div>
-                        <div>Raw Material / Service</div>
-                        <div>Amount (Rs)</div>
+                        <div>Raw Material / Item</div>
+                        <div class="text-end">Unit Price</div>
+                        <div>Qty</div>
+                        <div class="text-end">Amount (Rs)</div>
                         <div></div>
                     </div>
                     <div id="coMatModalRows"></div>
-                    <button type="button" class="co-mat-add-btn" id="coMatModalAddRowBtn">
+                    <button type="button" class="co-mat-add-btn mb-3" id="coMatModalAddRowBtn">
                         <i class="bi bi-plus-lg" style="font-size: 12px;"></i> Add material
                     </button>
 
+                    {{-- 2. Stitching Services Section --}}
+                    <div class="d-flex align-items-center justify-content-between mb-2 pt-3 border-top">
+                        <div class="fw-bold text-dark small text-uppercase" style="letter-spacing: 0.5px;">
+                            <i class="fas fa-cut me-1" style="color: #7c3aed;"></i> Stitching Services (Tailors)
+                        </div>
+                    </div>
+
+                    <div class="co-stitch-col-headers">
+                        <div>Stitching Vendor (Tailor)</div>
+                        <div class="text-end">Unit Price</div>
+                        <div>Qty</div>
+                        <div class="text-end">Amount (Rs)</div>
+                        <div></div>
+                    </div>
+                    <div id="coStitchModalRows"></div>
+                    <button type="button" class="co-mat-add-btn mb-3" id="coStitchModalAddRowBtn" style="color: #7c3aed; border-color: #ddd6fe; background-color: #f5f3ff;">
+                        <i class="bi bi-plus-lg" style="font-size: 12px;"></i> Add Stitching
+                    </button>
+
+                    {{-- 3. Summary Grid --}}
                     <div class="co-mat-summary-grid">
                         <div class="co-mat-summary-box">
                             <div class="label">Materials cost</div>
                             <div class="value" id="coMatModalTotalCost">Rs 0</div>
                         </div>
                         <div class="co-mat-summary-box">
-                            <div class="label">Order unit price</div>
-                            <div class="value" id="coMatModalUnitPrice">Rs 0</div>
+                            <div class="label">Stitching cost</div>
+                            <div class="value" id="coMatModalStitchCost" style="color: #7c3aed;">Rs 0</div>
                         </div>
                         <div class="co-mat-summary-box">
-                            <div class="label">Customize items</div>
-                            <div class="value" id="coMatModalCustomCount">0</div>
+                            <div class="label">Order unit price</div>
+                            <div class="value" id="coMatModalUnitPrice">Rs 0</div>
                         </div>
                         <div class="co-mat-summary-box">
                             <div class="label">Est. Profit</div>
@@ -1078,7 +1172,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="co-mat-modal-footer">
+                <div class="co-mat-modal-footer bg-light px-4 py-3 border-top d-flex justify-content-end gap-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary px-3" id="coMatModalCancelBtn">Cancel</button>
                     <button type="button" class="btn btn-sm btn-primary px-4 fw-semibold" id="coMatModalSaveBtn">Apply & Save</button>
                 </div>
@@ -1334,9 +1428,11 @@
         });
 
         @if ($isPrepare)
-            // ---- Order Item Materials Modal Logic (Only during Order Preparation) ----
+            // ---- Order Item Materials & Stitching Modal Logic (Only during Order Preparation) ----
             var rawMaterialCategories = {!! json_encode($preparedRawMaterialCategories ?? []) !!};
             var rawMaterialsList = {!! json_encode($preparedRawMaterials ?? []) !!};
+            var stitchingVendorsList = {!! json_encode($preparedStitchingVendors ?? []) !!};
+            var allVendorsList = {!! json_encode($preparedAllVendors ?? []) !!};
             var $activeOrderMaterialRow = null;
 
             function formatOrderRs(val) {
@@ -1350,6 +1446,11 @@
             function renderOrderMaterialModalRow(item) {
                 var rawName = (item && item.name) ? String(item.name).trim() : '';
                 var amount = (item && item.amount !== undefined && item.amount !== '') ? item.amount : '';
+                var qty = (item && item.qty !== undefined && item.qty !== '') ? item.qty : 1;
+                var unit = (item && item.unit) ? item.unit : 'Pcs';
+                var rate = (item && (item.unit_price !== undefined && item.unit_price !== '')) 
+                    ? item.unit_price 
+                    : ((item && item.rate !== undefined && item.rate !== '') ? item.rate : 0);
                 var catId = (item && item.category_id) ? String(item.category_id) : '';
                 var prodId = (item && item.product_id) ? String(item.product_id) : '';
                 var isCustom = item ? !!item.is_custom : false;
@@ -1362,6 +1463,8 @@
                     if (match) {
                         catId = String(match.category_id || '');
                         prodId = String(match.id);
+                        unit = match.unit_name || 'Pcs';
+                        rate = match.price || 0;
                         isCustom = false;
                     } else {
                         catId = '__custom__';
@@ -1369,7 +1472,11 @@
                     }
                 }
 
-                var $wrap = $('<div class="co-mat-item-wrap"></div>').attr('data-is-custom', isCustom ? '1' : '0');
+                var $wrap = $('<div class="co-mat-item-wrap"></div>')
+                    .attr('data-is-custom', isCustom ? '1' : '0')
+                    .attr('data-rate', rate)
+                    .attr('data-unit', unit)
+                    .attr('data-stock', 0);
                 var $row = $('<div class="co-mat-item-row"></div>');
 
                 // 1. Category Select
@@ -1382,7 +1489,7 @@
                     }
                     $catSelect.append($opt);
                 });
-                var $customCatOpt = $('<option value="__custom__">+ Custom / Service</option>');
+                var $customCatOpt = $('<option value="__custom__">+ Custom / Other</option>');
                 if (catId === '__custom__') {
                     $customCatOpt.prop('selected', true);
                 }
@@ -1394,13 +1501,25 @@
                 var $customNameInp = $('<input type="text" class="co-mat-row-custom-name form-control form-control-sm" placeholder="Enter custom item name..." autocomplete="off">');
                 $matCol.append($matSelect, $customNameInp);
 
-                // 3. Amount Input
-                var $amtInp = $('<input type="number" step="any" min="0" class="co-mat-row-amount form-control form-control-sm" placeholder="0">').val(amount);
+                // 3. Unit Price Column
+                var $priceInp = $('<input type="number" step="any" min="0" class="co-mat-row-price form-control form-control-sm text-end" placeholder="Price">')
+                    .val(rate > 0 ? rate : '');
 
-                // 4. Delete button
+                // 4. Qty Column (Input with unit badge)
+                var $qtyCol = $('<div class="co-mat-row-qty-col"></div>');
+                var $qtyGroup = $('<div class="input-group input-group-sm"></div>');
+                var $qtyInp = $('<input type="number" step="any" min="0.01" class="co-mat-row-qty form-control form-control-sm text-center" placeholder="Qty">').val(qty);
+                var $unitBadge = $('<span class="input-group-text co-mat-row-unit-badge px-2 text-muted fw-bold small" style="font-size: 11px;"></span>').text(unit);
+                $qtyGroup.append($qtyInp, $unitBadge);
+                $qtyCol.append($qtyGroup);
+
+                // 5. Amount Input
+                var $amtInp = $('<input type="number" step="any" min="0" class="co-mat-row-amount form-control form-control-sm text-end" placeholder="0.00">').val(amount);
+
+                // 6. Delete button
                 var $delBtn = $('<button type="button" class="co-mat-row-del" title="Remove material"><i class="bi bi-trash"></i></button>');
 
-                $row.append($catSelect, $matCol, $amtInp, $delBtn);
+                $row.append($catSelect, $matCol, $priceInp, $qtyCol, $amtInp, $delBtn);
                 $wrap.append($row);
 
                 var $caption = $('<div class="co-mat-custom-caption"></div>').text('customize');
@@ -1415,9 +1534,14 @@
 
                     if (selectedCat === '__custom__') {
                         $matSelect.hide();
-                        $customNameInp.attr('placeholder', 'e.g. Stitching, Embroidery, Extra Lace').show();
+                        $customNameInp.attr('placeholder', 'e.g. Lace, Buttons, Lining').show();
                         $wrap.attr('data-is-custom', '1');
                         $caption.show();
+                        $unitBadge.text('Pcs');
+                        $wrap.attr('data-unit', 'Pcs');
+                        $wrap.attr('data-rate', 0);
+                        $wrap.attr('data-stock', 999999);
+                        validateMaterialRowStock($wrap, false);
                         return;
                     }
 
@@ -1426,6 +1550,11 @@
                         $matSelect.append('<option value="">Choose category first...</option>');
                         $wrap.attr('data-is-custom', '0');
                         $caption.hide();
+                        $unitBadge.text('Pcs');
+                        $wrap.attr('data-unit', 'Pcs');
+                        $wrap.attr('data-rate', 0);
+                        $wrap.attr('data-stock', 0);
+                        validateMaterialRowStock($wrap, false);
                         return;
                     }
 
@@ -1436,11 +1565,15 @@
 
                     $matSelect.append('<option value="">Select Raw Material</option>');
                     filtered.forEach(function(m) {
-                        var costLabel = m.price > 0 ? ' (Rs ' + m.price + ')' : '';
+                        var uName = m.unit_name || 'unit';
+                        var costLabel = m.price > 0 ? ' (Rs ' + m.price + ' / ' + uName + ')' : '';
+                        var stockLabel = ' [Stock: ' + (parseFloat(m.stock) || 0) + ' ' + uName + ']';
                         var $opt = $('<option></option>')
                             .val(String(m.id))
-                            .text(m.item_name + costLabel)
+                            .text(m.item_name + costLabel + stockLabel)
                             .attr('data-price', m.price)
+                            .attr('data-unit', uName)
+                            .attr('data-stock', m.stock)
                             .attr('data-name', m.item_name);
                         if (String(m.id) === String(targetProdId)) {
                             $opt.prop('selected', true);
@@ -1463,18 +1596,35 @@
                         $customNameInp.attr('placeholder', 'Enter custom material name...').show();
                         $wrap.attr('data-is-custom', '1');
                         $caption.show();
+                        $unitBadge.text('Pcs');
+                        $wrap.attr('data-unit', 'Pcs');
+                        $wrap.attr('data-rate', 0);
+                        $wrap.attr('data-stock', 999999);
+                        validateMaterialRowStock($wrap, false);
                     } else if (targetProdId) {
                         var foundItem = filtered.find(function(m) { return String(m.id) === String(targetProdId); });
                         if (foundItem) {
+                            var uName = foundItem.unit_name || 'Pcs';
+                            var r = foundItem.price || 0;
+                            var s = parseFloat(foundItem.stock) || 0;
+                            $unitBadge.text(uName);
+                            $wrap.attr('data-unit', uName);
+                            $wrap.attr('data-rate', r);
+                            $wrap.attr('data-stock', s);
+                            $priceInp.val(r > 0 ? r : '');
                             if (autoFillAmount) {
-                                $amtInp.val(foundItem.price);
+                                var q = parseFloat($qtyInp.val()) || 1;
+                                $amtInp.val((q * r).toFixed(2));
                             }
                             $wrap.attr('data-is-custom', '0');
                             $caption.hide();
+                            validateMaterialRowStock($wrap, false);
                         }
                     } else {
                         $wrap.attr('data-is-custom', '0');
                         $caption.hide();
+                        $wrap.attr('data-stock', 0);
+                        validateMaterialRowStock($wrap, false);
                     }
                 }
 
@@ -1504,24 +1654,68 @@
                         $customNameInp.attr('placeholder', 'Enter custom material name...').show().focus();
                         $wrap.attr('data-is-custom', '1');
                         $caption.show();
+                        $unitBadge.text('Pcs');
+                        $wrap.attr('data-unit', 'Pcs');
+                        $wrap.attr('data-rate', 0);
+                        $wrap.attr('data-stock', 999999);
+                        $priceInp.val('');
+                        validateMaterialRowStock($wrap, false);
                     } else if (selected) {
                         $customNameInp.hide().val('');
                         $wrap.attr('data-is-custom', '0');
                         $caption.hide();
                         var $opt = $(this).find('option:selected');
                         var cost = parseFloat($opt.attr('data-price')) || 0;
-                        $amtInp.val(cost);
+                        var uName = $opt.attr('data-unit') || 'Pcs';
+                        var s = parseFloat($opt.attr('data-stock')) || 0;
+                        $unitBadge.text(uName);
+                        $wrap.attr('data-unit', uName);
+                        $wrap.attr('data-rate', cost);
+                        $wrap.attr('data-stock', s);
+                        $priceInp.val(cost > 0 ? cost : '');
+                        var curQ = parseFloat($qtyInp.val()) || 1;
+                        $amtInp.val((curQ * cost).toFixed(2));
+                        validateMaterialRowStock($wrap, true);
                     } else {
                         $customNameInp.hide().val('');
                         $wrap.attr('data-is-custom', '0');
                         $caption.hide();
+                        $unitBadge.text('Pcs');
+                        $wrap.attr('data-unit', 'Pcs');
+                        $wrap.attr('data-rate', 0);
+                        $wrap.attr('data-stock', 0);
+                        $priceInp.val('');
+                        validateMaterialRowStock($wrap, false);
                     }
                     updateOrderMaterialModalSummary();
+                });
+
+                $priceInp.on('input', function() {
+                    var p = parseFloat($(this).val()) || 0;
+                    $wrap.attr('data-rate', p);
+                    var q = parseFloat($qtyInp.val()) || 0;
+                    $amtInp.val((q * p).toFixed(2));
+                    updateOrderMaterialModalSummary();
+                });
+
+                $qtyInp.on('input', function() {
+                    var q = parseFloat($(this).val()) || 0;
+                    var p = parseFloat($priceInp.val()) || parseFloat($wrap.attr('data-rate')) || 0;
+                    if (p > 0) {
+                        $amtInp.val((q * p).toFixed(2));
+                    }
+                    validateMaterialRowStock($wrap, false);
+                    updateOrderMaterialModalSummary();
+                });
+
+                $qtyInp.on('change blur', function() {
+                    validateMaterialRowStock($wrap, true);
                 });
 
                 $customNameInp.on('input', function() {
                     $wrap.attr('data-is-custom', '1');
                     $caption.show();
+                    validateMaterialRowStock($wrap, false);
                     updateOrderMaterialModalSummary();
                 });
 
@@ -1533,15 +1727,147 @@
                 return $wrap;
             }
 
+            // Render Stitching Vendor Row (Multiple Stitching vendors can be added)
+            function renderOrderStitchingModalRow(item) {
+                var vendorId = (item && item.vendor_id) ? String(item.vendor_id) : '';
+                var vendorName = (item && item.vendor_name) ? String(item.vendor_name).trim() : '';
+                var unitPrice = (item && item.unit_price !== undefined && item.unit_price !== '') 
+                    ? item.unit_price 
+                    : ((item && item.rate !== undefined && item.rate !== '') ? item.rate : '');
+                var qty = (item && item.qty !== undefined && item.qty !== '') ? item.qty : 1;
+                var amount = (item && item.amount !== undefined && item.amount !== '') ? item.amount : '';
+
+                var $wrap = $('<div class="co-stitch-item-wrap"></div>');
+                var $row = $('<div class="co-stitch-item-row"></div>');
+
+                // 1. Vendor Select Column
+                var $vendorCol = $('<div class="co-stitch-row-vendor-col"></div>');
+                var $vendorSelect = $('<select class="co-stitch-row-vendor form-select form-select-sm"></select>');
+                $vendorSelect.append('<option value="">Select Stitching Vendor / Tailor</option>');
+
+                // Populate Stitching Vendors
+                if (stitchingVendorsList.length > 0) {
+                    var $stitchGroup = $('<optgroup label="Stitching Tailors"></optgroup>');
+                    stitchingVendorsList.forEach(function(v) {
+                        var $opt = $('<option></option>')
+                            .val(String(v.id))
+                            .text(v.name + (v.phone ? ' (' + v.phone + ')' : ''))
+                            .attr('data-name', v.name);
+                        if (String(v.id) === vendorId) {
+                            $opt.prop('selected', true);
+                        }
+                        $stitchGroup.append($opt);
+                    });
+                    $vendorSelect.append($stitchGroup);
+                }
+
+                // Also list other vendors if available
+                var otherVendors = allVendorsList.filter(function(v) { return v.type !== 'stitching'; });
+                if (otherVendors.length > 0) {
+                    var $otherGroup = $('<optgroup label="Other Vendors"></optgroup>');
+                    otherVendors.forEach(function(v) {
+                        var $opt = $('<option></option>')
+                            .val(String(v.id))
+                            .text(v.name)
+                            .attr('data-name', v.name);
+                        if (String(v.id) === vendorId) {
+                            $opt.prop('selected', true);
+                        }
+                        $otherGroup.append($opt);
+                    });
+                    $vendorSelect.append($otherGroup);
+                }
+
+                var $customOpt = $('<option value="__custom_vendor__">+ Custom / Walk-in Tailor</option>');
+                if (vendorId === '__custom_vendor__' || (!vendorId && vendorName)) {
+                    $customOpt.prop('selected', true);
+                }
+                $vendorSelect.append($customOpt);
+
+                var $customNameInp = $('<input type="text" class="co-stitch-row-custom-name form-control form-control-sm" placeholder="Enter tailor name..." autocomplete="off">')
+                    .val(vendorName);
+                if (vendorId === '__custom_vendor__' || (!vendorId && vendorName)) {
+                    $customNameInp.show();
+                } else {
+                    $customNameInp.hide();
+                }
+                $vendorCol.append($vendorSelect, $customNameInp);
+
+                // 2. Unit Price Column
+                var $priceInp = $('<input type="number" step="any" min="0" class="co-stitch-row-price form-control form-control-sm text-end" placeholder="Price">')
+                    .val(unitPrice);
+
+                // 3. Qty Column
+                var $qtyCol = $('<div class="co-stitch-row-qty-col"></div>');
+                var $qtyGroup = $('<div class="input-group input-group-sm"></div>');
+                var $qtyInp = $('<input type="number" step="any" min="0.01" class="co-stitch-row-qty form-control form-control-sm text-center" placeholder="Qty">').val(qty);
+                var $unitBadge = $('<span class="input-group-text px-2 text-muted fw-bold small" style="font-size: 11px;">Pcs</span>');
+                $qtyGroup.append($qtyInp, $unitBadge);
+                $qtyCol.append($qtyGroup);
+
+                // 4. Amount Column
+                var $amtInp = $('<input type="number" step="any" min="0" class="co-stitch-row-amount form-control form-control-sm text-end" placeholder="0.00">')
+                    .val(amount);
+
+                // 5. Delete Button
+                var $delBtn = $('<button type="button" class="co-stitch-row-del" title="Remove Stitching"><i class="bi bi-trash"></i></button>');
+
+                $row.append($vendorCol, $priceInp, $qtyCol, $amtInp, $delBtn);
+                $wrap.append($row);
+
+                // Event Listeners for Stitching row
+                $priceInp.on('input', function() {
+                    var p = parseFloat($(this).val()) || 0;
+                    var q = parseFloat($qtyInp.val()) || 0;
+                    $amtInp.val((p * q).toFixed(2));
+                    updateOrderMaterialModalSummary();
+                });
+
+                $qtyInp.on('input', function() {
+                    var q = parseFloat($(this).val()) || 0;
+                    var p = parseFloat($priceInp.val()) || 0;
+                    $amtInp.val((p * q).toFixed(2));
+                    updateOrderMaterialModalSummary();
+                });
+
+                $amtInp.on('input', function() {
+                    updateOrderMaterialModalSummary();
+                });
+
+                $vendorSelect.on('change', function() {
+                    if ($(this).val() === '__custom_vendor__') {
+                        $customNameInp.show().focus();
+                    } else {
+                        $customNameInp.hide().val('');
+                    }
+                    updateOrderMaterialModalSummary();
+                });
+
+                $customNameInp.on('input', function() {
+                    updateOrderMaterialModalSummary();
+                });
+
+                $('#coStitchModalRows').append($wrap);
+                return $wrap;
+            }
+
             function collectOrderModalMaterials() {
                 var list = [];
+
+                // 1. Collect Raw Materials
                 $('#coMatModalRows .co-mat-item-wrap').each(function() {
                     var $w = $(this);
                     var catVal = $w.find('.co-mat-row-cat').val() || '';
                     var matVal = $w.find('.co-mat-row-mat').val() || '';
                     var customName = ($w.find('.co-mat-row-custom-name').val() || '').trim();
+                    var rawPrice = $w.find('.co-mat-row-price').val();
+                    var unitPrice = rawPrice === '' ? 0 : (parseFloat(rawPrice) || 0);
                     var rawAmt = $w.find('.co-mat-row-amount').val();
-                    var amount = rawAmt === '' ? 0 : (parseFloat(rawAmt) || 0);
+                    var amount = rawAmt === '' ? (unitPrice * (parseFloat($w.find('.co-mat-row-qty').val()) || 1)) : (parseFloat(rawAmt) || 0);
+                    var rawQty = $w.find('.co-mat-row-qty').val();
+                    var qty = rawQty === '' ? 1 : (parseFloat(rawQty) || 1);
+                    var unit = $w.find('.co-mat-row-unit-badge').text() || $w.attr('data-unit') || 'Pcs';
+                    var rate = unitPrice;
 
                     var name = '';
                     var categoryId = null;
@@ -1570,34 +1896,87 @@
                         isCustom = true;
                     }
 
-                    if (name !== '' || amount > 0) {
+                    if (name !== '' || amount > 0 || qty > 0) {
                         list.push({
+                            type: 'material',
                             name: name,
                             amount: amount,
+                            qty: qty,
+                            unit: unit,
+                            rate: rate,
+                            unit_price: unitPrice,
                             category_id: categoryId,
                             product_id: productId,
                             is_custom: isCustom
                         });
                     }
                 });
+
+                // 2. Collect Stitching Services
+                $('#coStitchModalRows .co-stitch-item-wrap').each(function() {
+                    var $w = $(this);
+                    var vendorVal = $w.find('.co-stitch-row-vendor').val() || '';
+                    var customVendorName = ($w.find('.co-stitch-row-custom-name').val() || '').trim();
+                    var rawPrice = $w.find('.co-stitch-row-price').val();
+                    var unitPrice = rawPrice === '' ? 0 : (parseFloat(rawPrice) || 0);
+                    var rawQty = $w.find('.co-stitch-row-qty').val();
+                    var qty = rawQty === '' ? 1 : (parseFloat(rawQty) || 1);
+                    var rawAmt = $w.find('.co-stitch-row-amount').val();
+                    var amount = rawAmt === '' ? (unitPrice * qty) : (parseFloat(rawAmt) || 0);
+
+                    var vendorId = null;
+                    var vendorName = '';
+
+                    if (vendorVal === '__custom_vendor__') {
+                        vendorName = customVendorName || 'Custom Tailor';
+                    } else if (vendorVal !== '') {
+                        vendorId = parseInt(vendorVal, 10) || null;
+                        var foundV = allVendorsList.find(function(v) { return String(v.id) === String(vendorVal); });
+                        vendorName = foundV ? foundV.name : $w.find('.co-stitch-row-vendor option:selected').attr('data-name');
+                    } else if (customVendorName !== '') {
+                        vendorName = customVendorName;
+                    }
+
+                    if (vendorName !== '' || vendorId || amount > 0) {
+                        list.push({
+                            type: 'stitching',
+                            name: 'Stitching - ' + (vendorName || 'Tailor'),
+                            vendor_id: vendorId,
+                            vendor_name: vendorName,
+                            amount: amount,
+                            qty: qty,
+                            unit: 'Pcs',
+                            rate: unitPrice,
+                            unit_price: unitPrice,
+                            is_custom: true
+                        });
+                    }
+                });
+
                 return list;
             }
 
             function updateOrderMaterialModalSummary() {
                 if (!$activeOrderMaterialRow) return;
                 var list = collectOrderModalMaterials();
-                var totalCost = list.reduce(function(sum, it) { return sum + (parseFloat(it.amount) || 0); }, 0);
-                var customCount = list.filter(function(it) { return !!it.is_custom; }).length;
-                var unitPrice = parseFloat($activeOrderMaterialRow.find('.item-price').val()) || 0;
-                var profit = unitPrice - totalCost;
-                var profitPct = unitPrice > 0 ? Math.round((profit / unitPrice) * 100) : 0;
+                var matCost = list.filter(function(it) { return it.type !== 'stitching'; })
+                                  .reduce(function(sum, it) { return sum + (parseFloat(it.amount) || 0); }, 0);
+                var stitchCost = list.filter(function(it) { return it.type === 'stitching'; })
+                                    .reduce(function(sum, it) { return sum + (parseFloat(it.amount) || 0); }, 0);
+                var totalCost = matCost + stitchCost;
 
-                $('#coMatModalTotalCost').text(formatOrderRs(totalCost));
-                $('#coMatModalUnitPrice').text(formatOrderRs(unitPrice));
-                $('#coMatModalCustomCount').text(customCount);
+                var itemQty = parseFloat($activeOrderMaterialRow.find('.item-qty').val()) || 1;
+                var unitPrice = parseFloat($activeOrderMaterialRow.find('.item-price').val()) || 0;
+                var itemTotal = itemQty * unitPrice;
+                var profit = itemTotal - totalCost;
+                var profitPct = itemTotal > 0 ? Math.round((profit / itemTotal) * 100) : 0;
+
+                $('#coMatModalTotalCost').text(formatOrderRs(matCost));
+                $('#coMatModalStitchCost').text(formatOrderRs(stitchCost));
+                $('#coMatModalUnitPrice').text(formatOrderRs(itemTotal) + (itemQty > 1 ? ' (' + itemQty + ' pcs)' : ''));
 
                 var $profitVal = $('#coMatModalProfit');
-                var profitText = formatOrderRs(profit) + (unitPrice > 0 ? ' (' + profitPct + '%)' : '');
+                var profitText = formatOrderRs(profit) + (itemTotal > 0 ? ' (' + profitPct + '%)' : '');
                 $profitVal.text(profitText);
                 if (profit >= 0) {
                     $profitVal.removeClass('text-danger text-muted').addClass('text-success');
@@ -1626,21 +2005,106 @@
                 }
             }
 
+            function validateMaterialRowStock($wrap, showAlert) {
+                var isCustom = $wrap.attr('data-is-custom') === '1';
+                var $qtyInp = $wrap.find('.co-mat-row-qty');
+                $wrap.find('.co-mat-stock-warning').remove();
+
+                if (isCustom) {
+                    $qtyInp.removeClass('is-invalid border-danger').css({'border-color': '', 'background-color': ''});
+                    return { isShortage: false };
+                }
+
+                var matVal = $wrap.find('.co-mat-row-mat').val();
+                if (!matVal || matVal === '__custom_in_cat__') {
+                    $qtyInp.removeClass('is-invalid border-danger').css({'border-color': '', 'background-color': ''});
+                    return { isShortage: false };
+                }
+
+                var stock = parseFloat($wrap.attr('data-stock')) || 0;
+                var qty = parseFloat($qtyInp.val()) || 0;
+                var unit = $wrap.find('.co-mat-row-unit-badge').text() || $wrap.attr('data-unit') || 'Pcs';
+                var matName = $wrap.find('.co-mat-row-mat option:selected').attr('data-name') || 'Selected Material';
+
+                if (stock <= 0) {
+                    $qtyInp.addClass('is-invalid border-danger').css({'border-color': '#ef4444', 'background-color': '#fef2f2'});
+                    var $warn = $('<div class="co-mat-stock-warning text-danger small mt-1 d-flex align-items-center gap-1" style="font-size: 11.5px; font-weight: 600;">' +
+                        '<i class="bi bi-exclamation-triangle-fill text-danger"></i> ' +
+                        '<span><strong>Out of Stock!</strong> Available: 0 ' + unit + '</span>' +
+                    '</div>');
+                    $wrap.append($warn);
+
+                    if (showAlert) {
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Out of Stock Alert!',
+                                html: '<p class="mb-1 text-dark"><strong>' + matName + '</strong> has <strong>0 stock</strong> available in the warehouse.</p><small class="text-danger">Current stock: 0 ' + unit + '</small>',
+                                confirmButtonColor: '#ef4444',
+                                timer: 3000
+                            });
+                        } else if (typeof toastr !== 'undefined') {
+                            toastr.warning(matName + ' is Out of Stock (0 ' + unit + ' available)!');
+                        }
+                    }
+                    return { isShortage: true, isZero: true, name: matName, stock: stock, qty: qty, unit: unit };
+                } else if (qty > stock) {
+                    $qtyInp.addClass('is-invalid border-danger').css({'border-color': '#ef4444', 'background-color': '#fef2f2'});
+                    var $warn = $('<div class="co-mat-stock-warning text-danger small mt-1 d-flex align-items-center gap-1" style="font-size: 11.5px; font-weight: 600;">' +
+                        '<i class="bi bi-exclamation-triangle-fill text-danger"></i> ' +
+                        '<span><strong>Stock Shortage!</strong> Available: <strong>' + stock + ' ' + unit + '</strong> (Entered: ' + qty + ' ' + unit + ')</span>' +
+                    '</div>');
+                    $wrap.append($warn);
+
+                    if (showAlert) {
+                        if (typeof toastr !== 'undefined') {
+                            toastr.warning('Quantity (' + qty + ' ' + unit + ') exceeds available stock (' + stock + ' ' + unit + ') for ' + matName + '!');
+                        } else if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Stock Shortage Alert!',
+                                html: '<p class="mb-1 text-dark"><strong>' + matName + '</strong> available stock is only <strong>' + stock + ' ' + unit + '</strong>.</p><p class="text-danger small">You entered: <strong>' + qty + ' ' + unit + '</strong></p>',
+                                confirmButtonColor: '#f59e0b',
+                                timer: 3000
+                            });
+                        }
+                    }
+                    return { isShortage: true, isZero: false, name: matName, stock: stock, qty: qty, unit: unit };
+                } else {
+                    $qtyInp.removeClass('is-invalid border-danger').css({'border-color': '', 'background-color': ''});
+                    return { isShortage: false };
+                }
+            }
+
             $(document).on('click', '.open-order-materials-btn', function() {
                 $activeOrderMaterialRow = $(this).closest('.order-item-row');
                 var itemLabel = ($activeOrderMaterialRow.find('.item-name-input').val() || '').trim() || 'Order Item';
                 $('#coMatModalItemLabel').text(itemLabel);
 
                 var list = parseOrderMaterials($activeOrderMaterialRow.find('.item-materials-input').val());
-                $('#coMatModalRows').empty();
+                var matList = list.filter(function(it) { return it.type !== 'stitching'; });
+                var stitchList = list.filter(function(it) { return it.type === 'stitching'; });
 
-                if (list.length > 0) {
-                    list.forEach(function(item) {
+                $('#coMatModalRows').empty();
+                if (matList.length > 0) {
+                    matList.forEach(function(item) {
                         renderOrderMaterialModalRow(item);
                     });
                 } else {
                     renderOrderMaterialModalRow({ name: '', amount: '', is_custom: false });
                 }
+
+                $('#coStitchModalRows').empty();
+                if (stitchList.length > 0) {
+                    stitchList.forEach(function(item) {
+                        renderOrderStitchingModalRow(item);
+                    });
+                }
+
+                // Run stock validation checks without intrusive alert popup
+                $('#coMatModalRows .co-mat-item-wrap').each(function() {
+                    validateMaterialRowStock($(this), false);
+                });
 
                 updateOrderMaterialModalSummary();
                 showOrderMaterialsModal();
@@ -1652,6 +2116,12 @@
                 updateOrderMaterialModalSummary();
             });
 
+            $('#coStitchModalAddRowBtn').on('click', function() {
+                var $added = renderOrderStitchingModalRow({ vendor_id: '', unit_price: '', qty: 1, amount: '' });
+                $added.find('.co-stitch-row-vendor').focus();
+                updateOrderMaterialModalSummary();
+            });
+
             $(document).on('click', '#coMatModalRows .co-mat-row-del', function() {
                 $(this).closest('.co-mat-item-wrap').remove();
                 if ($('#coMatModalRows .co-mat-item-wrap').length === 0) {
@@ -1660,15 +2130,102 @@
                 updateOrderMaterialModalSummary();
             });
 
+            $(document).on('click', '#coStitchModalRows .co-stitch-row-del', function() {
+                $(this).closest('.co-stitch-item-wrap').remove();
+                updateOrderMaterialModalSummary();
+            });
+
             $('#coMatModalCloseBtn, #coMatModalCancelBtn').on('click', hideOrderMaterialsModal);
 
-            $('#coMatModalSaveBtn').on('click', function() {
+            function doSaveOrderMaterials() {
                 if (!$activeOrderMaterialRow) return;
                 var list = collectOrderModalMaterials();
                 $activeOrderMaterialRow.find('.item-materials-input').val(JSON.stringify(list));
                 refreshOrderRowMaterialsUI($activeOrderMaterialRow);
                 hideOrderMaterialsModal();
                 recalculateOrderTotals();
+
+                // If editing / preparing an existing order, auto-save & post to vendor ledger immediately
+                var $form = $('#orderItemsBody').closest('form');
+                var isExistingOrder = $form.find('input[name="_method"]').val() === 'PUT';
+                if (isExistingOrder && $form.attr('action')) {
+                    var stitchItems = list.filter(function(it) { return it.type === 'stitching'; });
+                    var totalStitch = stitchItems.reduce(function(sum, it) { return sum + (parseFloat(it.amount) || 0); }, 0);
+                    var vendorNames = stitchItems.map(function(it) { return it.vendor_name || 'Vendor'; }).filter(Boolean).join(', ');
+
+                    $.ajax({
+                        url: $form.attr('action'),
+                        method: 'POST',
+                        data: $form.serialize(),
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        success: function(res) {
+                            if (stitchItems.length > 0 && totalStitch > 0) {
+                                if (typeof Swal !== 'undefined') {
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Vendor Ledger Updated!',
+                                        html: '<p class="mb-1">Stitching charges of <strong>Rs ' + totalStitch.toFixed(2) + '</strong> recorded as <strong>Payable</strong> for <strong>' + (vendorNames || 'Vendor') + '</strong>.</p><small class="text-muted">Vendor balance & ledger updated successfully.</small>',
+                                        confirmButtonColor: '#4f46e5',
+                                        timer: 3500
+                                    });
+                                } else if (typeof toastr !== 'undefined') {
+                                    toastr.success('Rs ' + totalStitch.toFixed(2) + ' added to ' + (vendorNames || 'Vendor') + '\'s ledger!');
+                                }
+                            } else {
+                                if (typeof toastr !== 'undefined') {
+                                    toastr.success('Materials updated successfully.');
+                                }
+                            }
+                        },
+                        error: function(xhr) {
+                            console.warn('Auto-save response:', xhr);
+                        }
+                    });
+                }
+            }
+
+            $('#coMatModalSaveBtn').on('click', function() {
+                var shortages = [];
+                $('#coMatModalRows .co-mat-item-wrap').each(function() {
+                    var res = validateMaterialRowStock($(this), false);
+                    if (res && res.isShortage) {
+                        shortages.push(res);
+                    }
+                });
+
+                if (shortages.length > 0) {
+                    var itemsListHtml = '<ul class="text-start mb-0 ps-3 mt-2" style="font-size: 13px;">';
+                    shortages.forEach(function(s) {
+                        if (s.isZero) {
+                            itemsListHtml += '<li class="text-danger fw-semibold"><strong>' + s.name + '</strong>: Out of Stock (0 ' + s.unit + ' available in warehouse, requested: ' + s.qty + ' ' + s.unit + ')</li>';
+                        } else {
+                            itemsListHtml += '<li class="text-danger fw-semibold"><strong>' + s.name + '</strong>: Stock shortage! Available: ' + s.stock + ' ' + s.unit + ' (Entered: ' + s.qty + ' ' + s.unit + ')</li>';
+                        }
+                    });
+                    itemsListHtml += '</ul>';
+
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Stock Shortage Alert!',
+                            html: '<p class="mb-1 text-dark">Material quantity exceeds available warehouse stock:</p>' + itemsListHtml + '<p class="mt-3 text-muted small mb-0">Do you want to adjust the quantity or proceed anyway?</p>',
+                            showCancelButton: true,
+                            confirmButtonText: 'Proceed Anyway',
+                            cancelButtonText: 'Adjust Quantity',
+                            confirmButtonColor: '#ef4444',
+                            cancelButtonColor: '#4f46e5'
+                        }).then(function(result) {
+                            if (result.isConfirmed) {
+                                doSaveOrderMaterials();
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                doSaveOrderMaterials();
             });
         @endif
 

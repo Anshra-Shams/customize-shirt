@@ -286,11 +286,17 @@ class RawMaterialController extends Controller
         $rawMaterial->is_active = !$rawMaterial->is_active;
         $rawMaterial->save();
 
-        return response()->json([
-            'success' => true,
-            'is_active' => (bool)$rawMaterial->is_active,
-            'message' => 'Status updated successfully.',
-        ]);
+        $statusMsg = $rawMaterial->is_active ? 'Raw material activated successfully.' : 'Raw material deactivated successfully.';
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_active' => (bool)$rawMaterial->is_active,
+                'message' => $statusMsg,
+            ]);
+        }
+
+        return redirect()->back()->with('success', $statusMsg);
     }
 
     /**

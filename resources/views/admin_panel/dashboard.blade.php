@@ -487,15 +487,14 @@
     <div class="db-nav-pills">
         <a href="{{ route('customer_orders.create') }}" class="db-pill" style="border-color: var(--indigo); color: var(--indigo) !important;"><i class="fa-solid fa-plus-circle" style="color: var(--indigo);"></i> Take Customer Order</a>
         <a href="{{ route('customer_orders.index') }}"  class="db-pill"><i class="fa-solid fa-clipboard-check"       style="color: var(--blue);"></i>   Customer Orders</a>
-        <a href="{{ route('report.sale') }}"           class="db-pill"><i class="fa-solid fa-receipt"              style="color: var(--green);"></i>  Sales Report</a>
+        <a href="{{ route('report.sale') }}"           class="db-pill"><i class="fa-solid fa-truck-fast"           style="color: var(--green);"></i>  Deliveries & Sales Report</a>
+        <a href="{{ route('reports.onhand') }}"        class="db-pill"><i class="fa-solid fa-boxes-stacked"        style="color: var(--indigo);"></i> Raw Material Stock</a>
         <a href="{{ route('report.purchase') }}"       class="db-pill"><i class="fa-solid fa-cart-shopping"        style="color: var(--blue);"></i>   Purchase Report</a>
         <a href="{{ route('report.profit_loss') }}"    class="db-pill"><i class="fa-solid fa-chart-line"           style="color: var(--cyan);"></i>   Profit & Loss</a>
-        <a href="{{ route('report.executive') }}"      class="db-pill"><i class="fa-solid fa-briefcase"            style="color: var(--purple);"></i>  Executive Report</a>
+        <a href="{{ route('report.balance_sheet') }}"  class="db-pill"><i class="fa-solid fa-scale-balanced"      style="color: var(--purple);"></i> Balance Sheet</a>
+        <a href="{{ route('report.parties_balance') }}" class="db-pill"><i class="fa-solid fa-users-viewfinder"   style="color: var(--blue);"></i>   Parties Balance</a>
         <a href="{{ route('report.recovery') }}"       class="db-pill"><i class="fa-solid fa-file-invoice-dollar"  style="color: var(--amber);"></i>  Recovery Report</a>
         <a href="{{ route('report.payable') }}"        class="db-pill"><i class="fa-solid fa-hand-holding-dollar"  style="color: var(--red);"></i>    Payable Report</a>
-        <a href="{{ route('report.parties_balance') }}" class="db-pill"><i class="fa-solid fa-users-viewfinder"   style="color: var(--blue);"></i>   Parties Balance</a>
-        <a href="{{ route('reports.onhand') }}"        class="db-pill"><i class="fa-solid fa-boxes-stacked"        style="color: var(--green);"></i>  On-Hand Stock</a>
-        <a href="{{ route('report.balance_sheet') }}"  class="db-pill"><i class="fa-solid fa-scale-balanced"      style="color: var(--muted);"></i>  Balance Sheet</a>
     </div>
 
     {{-- =============================================
@@ -506,11 +505,11 @@
 
         <div class="kpi-card" style="--kpi-color: var(--purple); --kpi-icon-bg: #f5f3ff;">
             <div class="kpi-top">
-                <span class="kpi-label">Total Sales (This Month)</span>
-                <div class="kpi-icon"><i class="fa-solid fa-cart-shopping"></i></div>
+                <span class="kpi-label">Delivered Orders (This Month)</span>
+                <div class="kpi-icon"><i class="fa-solid fa-truck-fast"></i></div>
             </div>
             <div class="kpi-value">Rs {{ number_format($salesThisMonth, 0) }}</div>
-            <span class="kpi-trend up"><i class="fas fa-arrow-up"></i> 18.6% <span class="kpi-trend-sub">vs last month</span></span>
+            <span class="kpi-trend up"><i class="fas fa-check-circle"></i> {{ $deliveredOrdersCount ?? 0 }} Delivered <span class="kpi-trend-sub">({{ $ordersThisMonth ?? 0 }} Total Orders)</span></span>
         </div>
 
         <div class="kpi-card" style="--kpi-color: var(--red); --kpi-icon-bg: #fff1f2;">
@@ -519,7 +518,7 @@
                 <div class="kpi-icon"><i class="fa-solid fa-bag-shopping"></i></div>
             </div>
             <div class="kpi-value">Rs {{ number_format($purchasesThisMonth, 0) }}</div>
-            <span class="kpi-trend up"><i class="fas fa-arrow-up"></i> 12.3% <span class="kpi-trend-sub">vs last month</span></span>
+            <span class="kpi-trend up"><i class="fas fa-boxes-stacked"></i> Raw Materials & Goods</span>
         </div>
 
         <div class="kpi-card" style="--kpi-color: var(--amber); --kpi-icon-bg: #fffbeb;">
@@ -528,7 +527,7 @@
                 <div class="kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
             </div>
             <div class="kpi-value">Rs {{ number_format($grossProfitThisMonth, 0) }}</div>
-            <span class="kpi-trend up"><i class="fas fa-arrow-up"></i> 22.5% <span class="kpi-trend-sub">vs last month</span></span>
+            <span class="kpi-trend up"><i class="fas fa-arrow-up"></i> Deliveries - Cost</span>
         </div>
 
         <div class="kpi-card" style="--kpi-color: var(--red); --kpi-icon-bg: #fff1f2;">
@@ -537,7 +536,7 @@
                 <div class="kpi-icon"><i class="fa-solid fa-file-invoice"></i></div>
             </div>
             <div class="kpi-value">Rs {{ number_format($expensesThisMonth, 0) }}</div>
-            <span class="kpi-trend down"><i class="fas fa-arrow-down"></i> 5.4% <span class="kpi-trend-sub">vs last month</span></span>
+            <span class="kpi-trend down"><i class="fas fa-arrow-down"></i> Operating Expenses</span>
         </div>
 
         <div class="kpi-card" style="--kpi-color: var(--green); --kpi-icon-bg: #ecfdf5;">
@@ -546,12 +545,12 @@
                 <div class="kpi-icon"><i class="fa-solid fa-circle-dollar-to-slot"></i></div>
             </div>
             <div class="kpi-value">Rs {{ number_format($netProfitThisMonth, 0) }}</div>
-            <span class="kpi-trend up"><i class="fas fa-arrow-up"></i> 28.7% <span class="kpi-trend-sub">vs last month</span></span>
+            <span class="kpi-trend up"><i class="fas fa-arrow-up"></i> After Expenses</span>
         </div>
 
         <div class="kpi-card" style="--kpi-color: var(--blue); --kpi-icon-bg: #eff6ff;">
             <div class="kpi-top">
-                <span class="kpi-label">Cash Balance</span>
+                <span class="kpi-label">Cash & Bank Balance</span>
                 <div class="kpi-icon"><i class="fa-solid fa-wallet"></i></div>
             </div>
             <div class="kpi-value">Rs {{ number_format($totalCashAndBankBalance, 0) }}</div>
@@ -561,15 +560,15 @@
     </div>
 
     {{-- =============================================
-         4. SALES OVERVIEW + CATEGORY + TOP PRODUCTS
+         4. ORDERS & DELIVERIES ANALYTICS + CATEGORY + TOP PRODUCTS
     ============================================= --}}
-    <div class="db-section-label"><i class="fas fa-chart-area text-success"></i> Sales Analytics</div>
+    <div class="db-section-label"><i class="fas fa-chart-area text-success"></i> Orders & Deliveries Analytics</div>
     <div class="grid-3col">
 
-        {{-- Sales Overview Line Chart --}}
+        {{-- Deliveries Overview Line Chart --}}
         <div class="panel">
             <div class="panel-hd">
-                <span class="panel-title"><i class="fas fa-chart-area" style="color:var(--indigo);"></i> Sales Overview</span>
+                <span class="panel-title"><i class="fas fa-chart-area" style="color:var(--indigo);"></i> Deliveries Overview</span>
                 <span class="panel-badge">Last 7 Days</span>
             </div>
             <div class="panel-body-flex">
@@ -599,7 +598,7 @@
         {{-- Top Selling Products --}}
         <div class="panel">
             <div class="panel-hd">
-                <span class="panel-title"><i class="fas fa-fire" style="color:var(--red);"></i> Top Products</span>
+                <span class="panel-title"><i class="fas fa-fire" style="color:var(--red);"></i> Top Ordered Products</span>
                 <span class="panel-badge">By Qty</span>
             </div>
             <div class="panel-body-flex">
@@ -612,14 +611,14 @@
                                     <div class="rank-num">{{ $r++ }}</div>
                                     <div>
                                         <div class="rank-name">{{ Str::limit($tp->product_name ?: 'Standard Item', 20) }}</div>
-                                        <div class="rank-sub">{{ number_format($tp->total_qty) }} units sold</div>
+                                        <div class="rank-sub">{{ number_format($tp->total_qty) }} units ordered</div>
                                     </div>
                                 </div>
                                 <div class="rank-val">Rs {{ number_format($tp->total_revenue ?? 0) }}</div>
                             </div>
                         @endforeach
                     @else
-                        <div class="text-center text-muted py-4" style="font-size:0.82rem;">No sales data available.</div>
+                        <div class="text-center text-muted py-4" style="font-size:0.82rem;">No order data available.</div>
                     @endif
                 </div>
             </div>
@@ -652,7 +651,7 @@
                         <div class="biz-icon" style="background:#f3e8ff; color:#8b5cf6;"><i class="fas fa-truck"></i></div>
                         <div>
                             <div class="biz-val">{{ number_format($vendorCount) }}</div>
-                            <div class="biz-lbl">Suppliers</div>
+                            <div class="biz-lbl">Vendors</div>
                             <div class="biz-trend up">↑ 10.6%</div>
                         </div>
                     </div>
@@ -798,9 +797,9 @@
 
         <div class="spark-card">
             <div>
-                <div class="spark-label">Total Sales</div>
+                <div class="spark-label">Delivered Orders</div>
                 <div class="spark-value">Rs {{ number_format($salesThisMonth, 0) }}</div>
-                <div class="spark-trend up">↑ 18.6% vs last month</div>
+                <div class="spark-trend up"><i class="fas fa-check-circle"></i> {{ $deliveredOrdersCount ?? 0 }} Completed</div>
             </div>
             <div class="spark-canvas-wrap"><canvas id="spkSales"></canvas></div>
         </div>
@@ -910,7 +909,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 labels: salesStats.daily.categories,
                 datasets: [
                     {
-                        label: 'Sales',
+                        label: 'Deliveries',
                         data: salesStats.daily.series[0]?.data || [],
                         borderColor: '#6366f1', borderWidth: 2.5,
                         backgroundColor: grad(ctx, 'rgba(99,102,241,0.18)', 'rgba(99,102,241,0.0)'),

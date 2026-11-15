@@ -23,6 +23,11 @@ class Sale extends Model
         return $this->belongsTo(Customer::class, 'customer_id', 'id');
     }
 
+    public function customer()
+    {
+        return $this->customer_relation();
+    }
+
     public function product_relation()
     {
         return $this->belongsTo(Product::class, 'product', 'id');

@@ -131,9 +131,6 @@
                     <p class="text-muted mb-0 small">Manage custom and catalog orders taken from customers with delivery dates.</p>
                 </div>
                 <div class="d-flex" style="gap: 8px;">
-                    <a href="{{ url('/home') }}" class="btn btn-light border font-weight-bold">
-                        <i class="fas fa-home mr-1"></i> Dashboard
-                    </a>
                     <a href="{{ route('customer_orders.create') }}" class="btn btn-primary font-weight-bold shadow-sm px-4">
                         <i class="fas fa-plus mr-1"></i> Take New Order
                     </a>
@@ -341,8 +338,8 @@
                                         </form>
                                     </td>
                                     <td class="text-center text-nowrap">
-                                        @if (in_array($order->status, ['pending', 'in_progress']))
-                                            <a href="{{ route('customer_orders.prepare', $order->id) }}" class="btn btn-sm btn-outline-warning" title="Confirm Preparing">
+                                        @if ($order->status === 'pending')
+                                            <a href="{{ route('customer_orders.prepare', $order->id) }}" class="btn btn-sm btn-outline-warning" title="Prepare Order">
                                                 <i class="fas fa-tasks"></i>
                                             </a>
                                         @endif

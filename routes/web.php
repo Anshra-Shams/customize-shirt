@@ -385,7 +385,7 @@ Route::middleware('auth')->group(function () {
     Route::post('bookings/store', [ProductBookingController::class, 'store'])->middleware('permission:bookings.create')->name('bookings.store');
     Route::get('booking/receipt/{id}', [ProductBookingController::class, 'receipt'])->middleware('permission:bookings.view')->name('booking.receipt');
     Route::get('/sales/from-booking/{id}', [SaleController::class, 'convertFromBooking'])->name('sales.from.booking');
-    Route::get('/sales/from-order/{id}', [SaleController::class, 'convertFromOrder'])->name('sales.from.order');
+    Route::get('/sales/from-order/{id?}', [SaleController::class, 'convertFromOrder'])->name('sales.from.order');
     Route::post('/sales/{id}/confirm', [SaleController::class, 'confirmBooking'])->middleware('permission:sales.create')->name('sales.confirm');
 
     // Customer Orders (Isolated order taking module - does not alter stock or ledger)

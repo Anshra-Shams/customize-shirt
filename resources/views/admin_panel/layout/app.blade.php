@@ -711,10 +711,30 @@
                                             let iconBg = '#e3f2fd'; 
                                             let iconColor = '#2196f3'; 
                                             let iconClass = 'fa-info';
+                                            let titleLower = (n.title || '').toLowerCase();
+
                                             if (n.type === 'sale_return') {
                                                 iconBg = '#fff3e0'; 
                                                 iconColor = '#ff9800'; 
                                                 iconClass = 'fa-undo';
+                                            } else if (titleLower.includes('delivery') || n.source_type === 'App\\Models\\CustomerOrder') {
+                                                if (n.type === 'critical') {
+                                                    iconBg = '#fee2e2'; 
+                                                    iconColor = '#ef4444'; 
+                                                    iconClass = 'fa-truck';
+                                                } else {
+                                                    iconBg = '#dcfce7'; 
+                                                    iconColor = '#16a34a'; 
+                                                    iconClass = 'fa-truck';
+                                                }
+                                            } else if (titleLower.includes('raw material')) {
+                                                iconBg = '#fef3c7'; 
+                                                iconColor = '#d97706'; 
+                                                iconClass = 'fa-boxes';
+                                            } else if (n.type === 'critical' || titleLower.includes('stock alert')) {
+                                                iconBg = '#fee2e2'; 
+                                                iconColor = '#ef4444'; 
+                                                iconClass = 'fa-exclamation-triangle';
                                             }
 
                                             html += `
@@ -779,19 +799,6 @@
 
                         </li>
                         @endcanany
-                        <li class="nav-item">
-                            <a href="#" class="nav-link">
-                                <i class="menu_icon fas fa-clipboard-check"></i>
-                                <span class="menu-title">Customer Orders</span>
-                                <i class="menu-arrow"></i>
-                            </a>
-                            <div class="submenu">
-                                <ul class="submenu-item">
-                                    <li><a href="{{ route('customer_orders.create') }}"><i class="fas fa-plus-circle"></i> Take New Order</a></li>
-                                    <li><a href="{{ route('customer_orders.index') }}"><i class="fas fa-list-alt"></i> All Customer Orders</a></li>
-                                </ul>
-                            </div>
-                        </li>
                         <!--=========================*
                               UI Features
                     *===========================-->
@@ -901,11 +908,11 @@
                                                 </ul>
                                             </div>
                                         @endcanany
-                                        <!-- Customers & Sales -->
+                                        <!-- Order & Customer -->
                                         @canany(['sales.view', 'sales.view_own', 'sales.create', 'customers.view', 'sales.officers.view',
                                             'receipts.voucher.view', 'zones.view'])
                                             <div class="col-group col-md-3">
-                                                <p class="category-heading">Sales & Customers</p>
+                                                <p class="category-heading">Order & Customer</p>
                                                 <ul class="submenu-item">
                                                     @canany(['sales.view', 'sales.view_own'])
                                                         <li><a href="{{ url('sale') }}"><i class="fas fa-receipt"></i>
@@ -919,8 +926,12 @@
                                                         <li><a href="{{ url('customers') }}"><i class="fas fa-user"></i>
                                                                 Customer</a></li>
                                                     @endcan
+                                                    <li><a href="{{ route('customer_orders.create') }}"><i class="fas fa-plus-circle"></i>
+                                                            Take New Order</a></li>
                                                     <li><a href="{{ route('customer_orders.index') }}"><i class="fas fa-clipboard-check"></i>
                                                             Customer Orders</a></li>
+                                                    <li><a href="{{ route('sales.from.order') }}"><i class="fas fa-truck"></i>
+                                                            Deliver Order</a></li>
                                                     @can('zones.view')
                                                         <li><a href="{{ url('zone') }}"><i class="fas fa-map-marker-alt"></i>
                                                                 Zone</a></li>

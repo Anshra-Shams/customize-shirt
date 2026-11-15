@@ -460,30 +460,78 @@ class HomeController extends Controller
                 ->limit(5)
                 ->get();
 
-            // Recent Activities Feed
-            $recentSales = DB::table('sales')->latest()->limit(3)->get()->map(function($s) {
+            // Customer Orders Pipeline Stats
+            $ordersThisMonth = DB::table('customer_orders')
+                ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
+                ->count();
+            $ordersThisMonthValue = DB::table('customer_orders')
+                ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
+                ->sum('total_amount');
+
+            $pendingOrdersCount = DB::table('customer_orders')->where('status', 'pending')->count();
+            $inProgressOrdersCount = DB::table('customer_orders')->where('status', 'in_progress')->count();
+            $readyOrdersCount = DB::table('customer_orders')->where('status', 'ready')->count();
+            $deliveredOrdersCount = DB::table('customer_orders')
+                ->where('status', 'delivered')
+                ->whereBetween('updated_at', [$startOfMonth, $endOfMonth])
+                ->count();
+            $totalOrdersCount = DB::table('customer_orders')->count();
+
+            // Recent Activities Feed (Customer Orders, Deliveries, Purchases)
+            $recentDeliveriesAndSales = DB::table('sales')->latest()->limit(3)->get()->map(function($s) {
+                $isDel = \Illuminate\Support\Str::startsWith($s->invoice_no ?? '', 'DEL-');
+                $name = $s->walkin_name;
+                if (!$name && $s->customer_id) {
+                    $name = DB::table('customers')->where('id', $s->customer_id)->value('customer_name');
+                }
+                $custLabel = $name ? " ({$name})" : "";
+                
                 return [
-                    'icon' => 'fa-receipt text-success',
-                    'bg' => '#ecfdf5',
-                    'title' => 'New Sale Invoice #' . $s->invoice_no,
-                    'subtitle' => 'Sale Transaction',
+                    'icon' => $isDel ? 'fa-truck-fast text-primary' : 'fa-receipt text-success',
+                    'bg' => $isDel ? '#eff6ff' : '#ecfdf5',
+                    'title' => $isDel ? "Delivery #{$s->invoice_no}{$custLabel}" : "Sale Invoice #{$s->invoice_no}{$custLabel}",
+                    'subtitle' => $s->reference ? $s->reference : ($isDel ? 'Order Delivered' : 'Sale Transaction'),
                     'amount' => 'Rs ' . number_format($s->total_net, 0),
-                    'time' => \Carbon\Carbon::parse($s->created_at)->diffForHumans()
+                    'time' => \Carbon\Carbon::parse($s->created_at)->diffForHumans(),
+                    'created_at' => $s->created_at
+                ];
+            });
+
+            $recentOrders = DB::table('customer_orders')->latest()->limit(3)->get()->map(function($o) {
+                $name = $o->walkin_name;
+                if (!$name && $o->customer_id) {
+                    $name = DB::table('customers')->where('id', $o->customer_id)->value('customer_name');
+                }
+                $custLabel = $name ? " ({$name})" : "";
+                $badge = ucfirst(str_replace('_', ' ', $o->status));
+
+                return [
+                    'icon' => 'fa-clipboard-list text-primary',
+                    'bg' => '#f5f3ff',
+                    'title' => "Order #{$o->order_no}{$custLabel}",
+                    'subtitle' => "Status: {$badge}",
+                    'amount' => 'Rs ' . number_format($o->total_amount, 0),
+                    'time' => \Carbon\Carbon::parse($o->created_at)->diffForHumans(),
+                    'created_at' => $o->created_at
                 ];
             });
 
             $recentPurchases = DB::table('purchases')->latest()->limit(2)->get()->map(function($p) {
                 return [
-                    'icon' => 'fa-cart-shopping text-primary',
-                    'bg' => '#eef2ff',
+                    'icon' => 'fa-cart-shopping text-warning',
+                    'bg' => '#fffbeb',
                     'title' => 'Purchase Bill #' . $p->invoice_no,
-                    'subtitle' => 'Procurement',
+                    'subtitle' => 'Procurement / Raw Material',
                     'amount' => 'Rs ' . number_format($p->net_amount, 0),
-                    'time' => \Carbon\Carbon::parse($p->created_at)->diffForHumans()
+                    'time' => \Carbon\Carbon::parse($p->created_at)->diffForHumans(),
+                    'created_at' => $p->created_at
                 ];
             });
 
-            $recentActivities = $recentSales->concat($recentPurchases)->values();
+            $recentActivities = $recentOrders->concat($recentDeliveriesAndSales)->concat($recentPurchases)
+                ->sortByDesc('created_at')
+                ->take(6)
+                ->values();
 
             return view('admin_panel.dashboard', compact(
                 'categoryCount',
@@ -522,7 +570,14 @@ class HomeController extends Controller
                 'totalStockValue',
                 'salesByCategory',
                 'expenseBreakdown',
-                'recentActivities'
+                'recentActivities',
+                'ordersThisMonth',
+                'ordersThisMonthValue',
+                'pendingOrdersCount',
+                'inProgressOrdersCount',
+                'readyOrdersCount',
+                'deliveredOrdersCount',
+                'totalOrdersCount'
             ));
         } else {
             return redirect()->back()->with('error', 'Unauthorized access');

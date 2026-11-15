@@ -49,10 +49,12 @@ class WarehouseStock extends Model
     {
         static::saved(function ($warehouseStock) {
             $product = $warehouseStock->product;
-            if ($product && !is_null($product->alert_quantity)) {
-                $totalPieces = self::where('product_id', $product->id)->sum('total_pieces');
-                if ($totalPieces < $product->alert_quantity) {
+            if ($product && !is_null($product->alert_quantity) && $product->alert_quantity !== '') {
+                $totalPieces = (float) self::where('product_id', $product->id)->sum('total_pieces');
+                if ($totalPieces <= (float) $product->alert_quantity) {
                     \App\Models\SystemNotification::createStockAlertNotification($product, $totalPieces);
+                } else {
+                    \App\Models\SystemNotification::resolveStockAlertNotification($product->id);
                 }
             }
         });

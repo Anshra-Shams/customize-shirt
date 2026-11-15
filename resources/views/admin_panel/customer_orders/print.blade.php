@@ -167,7 +167,10 @@
     @endphp
 
     <div class="slip-actions no-print">
-        <a href="{{ route('customer_orders.show', $order->id) }}" class="btn">&larr; Back to Order</a>
+        <div style="display: flex; gap: 8px;">
+            <a href="{{ route('customer_orders.index') }}" class="btn">&larr; Back to Order List</a>
+            <a href="{{ route('customer_orders.show', $order->id) }}" class="btn">View Order</a>
+        </div>
         <button type="button" onclick="window.print()" class="btn btn-primary">Print Order Slip</button>
     </div>
 
@@ -229,7 +232,9 @@
                     <tr>
                         <td class="text-center">{{ $idx + 1 }}</td>
                         <td><strong>{{ $item->item_name }}</strong></td>
-                        <td>{{ $item->description ?: '-' }}</td>
+                        <td>
+                            {{ $item->description ?: '-' }}
+                        </td>
                         <td class="text-center">{{ rtrim(rtrim(number_format($item->qty, 2), '0'), '.') }}</td>
                         <td class="text-center">{{ $item->unit ?: 'Pcs' }}</td>
                         <td class="text-right">{{ number_format($item->price, 2) }}</td>
@@ -263,7 +268,7 @@
                     </div>
                 @endif
                 <div class="totals-row grand">
-                    <span>Estimated Total:</span>
+                    <span>Total:</span>
                     <span>Rs {{ number_format($order->total_amount, 2) }}</span>
                 </div>
                 <div class="totals-row" style="margin-top: 6px; color: #059669;">

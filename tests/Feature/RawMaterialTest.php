@@ -154,4 +154,43 @@ class RawMaterialTest extends TestCase
         $material->refresh();
         $this->assertEquals(0, $material->is_active);
     }
+
+    public function test_reports_onhand_displays_only_raw_materials_and_excludes_regular_products(): void
+    {
+        $perm = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'inventory.onhand.view']);
+        if (!$this->user->hasPermissionTo('inventory.onhand.view')) {
+            $this->user->givePermissionTo($perm);
+        }
+
+        $rawMaterial = Product::create([
+            'creater_id' => $this->user->id,
+            'item_name' => 'Gold Zari Thread',
+            'item_code' => 'RM-ZARI-99',
+            'category_id' => $this->category->id,
+            'unit_id' => $this->unit->id,
+            'purchase_price_per_piece' => 45.00,
+            'is_raw_material' => 1,
+            'is_part' => 1,
+            'is_active' => 1,
+            'size_mode' => 'by_pieces',
+        ]);
+
+        $regularProduct = Product::create([
+            'creater_id' => $this->user->id,
+            'item_name' => 'Formal Designer Shirt',
+            'item_code' => 'ITEM-SHIRT-99',
+            'purchase_price_per_piece' => 1500.00,
+            'is_raw_material' => 0,
+            'is_part' => 0,
+            'is_active' => 1,
+            'size_mode' => 'by_pieces',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('reports.onhand'));
+        $response->assertStatus(200);
+        $response->assertSee('Gold Zari Thread');
+        $response->assertSee('RM-ZARI-99');
+        $response->assertDontSee('Formal Designer Shirt');
+        $response->assertDontSee('ITEM-SHIRT-99');
+    }
 }

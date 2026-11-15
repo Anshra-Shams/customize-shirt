@@ -1279,7 +1279,7 @@ class PurchaseController extends Controller
 
     public function edit($id)
     {
-        $purchase = Purchase::with('items.product')->findOrFail($id);
+        $purchase = Purchase::with(['items.product.unit', 'items.product.category_relation'])->findOrFail($id);
 
         $Vendor = Vendor::all();
         $Warehouse = Warehouse::all();
@@ -1288,7 +1288,29 @@ class PurchaseController extends Controller
             $q->whereIn('name', ['Cash', 'Bank']);
         })->where('status', 1)->orderBy('title')->get();
 
-        return view('admin_panel.purchase.edit', compact('purchase', 'Vendor', 'Warehouse', 'accounts'));
+        $rawMaterialCategories = \App\Models\Category::rawMaterials()->orderBy('name')->get();
+        if ($rawMaterialCategories->isEmpty()) {
+            $rawMaterialCategories = \App\Models\Category::where('is_raw_material', 1)->orderBy('name')->get();
+        }
+
+        $paymentVouchers = \App\Models\VoucherMaster::where('voucher_type', \App\Models\VoucherMaster::TYPE_PAYMENT)
+            ->where('remarks', "Auto-Payment for Purchase #{$purchase->invoice_no}")
+            ->with('details')
+            ->get();
+
+        $existingPayments = [];
+        foreach ($paymentVouchers as $pv) {
+            foreach ($pv->details as $d) {
+                if ($d->credit > 0) {
+                    $existingPayments[] = [
+                        'account_id' => $d->account_id,
+                        'amount' => (float) $d->credit,
+                    ];
+                }
+            }
+        }
+
+        return view('admin_panel.purchase.edit', compact('purchase', 'Vendor', 'Warehouse', 'accounts', 'rawMaterialCategories', 'existingPayments'));
     }
 
     public function update(Request $request, $id)
@@ -1313,6 +1335,11 @@ class PurchaseController extends Controller
             'unit.*' => 'nullable|required_with:product_id.*|string',
             'item_discount' => 'nullable|array',
             'item_discount.*' => 'nullable|numeric|min:0',
+
+            'payment_account_id' => 'nullable|array',
+            'payment_account_id.*' => 'nullable',
+            'payment_amount' => 'nullable|array',
+            'payment_amount.*' => 'nullable|numeric|min:0',
         ]);
 
         DB::transaction(function () use ($validated, $request, $id) {
@@ -1505,6 +1532,61 @@ class PurchaseController extends Controller
                     ->where('source_id', $voucher->id)
                     ->where('account_id', $apAccountId)
                     ->update(['credit' => $purchase->net_amount]);
+            }
+
+            // Sync Payments on Purchase Update
+            $journalService = app(\App\Services\JournalEntryService::class);
+            $transactionService = app(\App\Services\TransactionService::class);
+
+            $paymentAccountIds = $request->input('payment_account_id', []);
+            $paymentAmounts = $request->input('payment_amount', []);
+
+            if (is_array($paymentAccountIds)) {
+                // 1. Reverse previous auto-payment voucher(s) for this purchase
+                $oldPaymentVouchers = \App\Models\VoucherMaster::where('voucher_type', \App\Models\VoucherMaster::TYPE_PAYMENT)
+                    ->where('remarks', "Auto-Payment for Purchase #{$purchase->invoice_no}")
+                    ->get();
+
+                $oldPaidTotal = 0;
+                foreach ($oldPaymentVouchers as $oldVoucher) {
+                    $oldPaidTotal += (float) $oldVoucher->total_amount;
+                    $journalService->reverseEntriesForSource($oldVoucher);
+                    $oldVoucher->details()->delete();
+                    $oldVoucher->delete();
+                }
+
+                // Restore vendor ledger for the reversed payments
+                if ($oldPaidTotal > 0 && $purchase->vendor_id) {
+                    $vl = \App\Models\VendorLedger::where('vendor_id', $purchase->vendor_id)->first();
+                    if ($vl) {
+                        $vl->closing_balance += $oldPaidTotal;
+                        $vl->save();
+                    }
+                }
+
+                $purchase->paid_amount = max(0, (float) $purchase->paid_amount - $oldPaidTotal);
+                $purchase->due_amount = (float) $purchase->net_amount - (float) $purchase->paid_amount;
+                $purchase->save();
+
+                // 2. Filter valid payment accounts & amounts
+                $filteredAccountIds = [];
+                $filteredAmounts = [];
+                foreach ($paymentAccountIds as $pIdx => $accId) {
+                    $amt = (float) ($paymentAmounts[$pIdx] ?? 0);
+                    if ($accId && $amt > 0) {
+                        $filteredAccountIds[] = $accId;
+                        $filteredAmounts[] = $amt;
+                    }
+                }
+
+                // 3. Record new payments
+                if (!empty($filteredAccountIds)) {
+                    $transactionService->createPaymentForPurchase(
+                        $purchase,
+                        $filteredAccountIds,
+                        $filteredAmounts
+                    );
+                }
             }
         });
 

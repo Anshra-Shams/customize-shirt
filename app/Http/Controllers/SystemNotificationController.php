@@ -13,6 +13,9 @@ class SystemNotificationController extends Controller
             return response()->json(['count' => 0, 'notifications' => []]);
         }
 
+        // Sync system alerts (Raw materials low stock & customer order deliveries)
+        \App\Models\SystemNotification::syncSystemAlerts();
+
         $count = \App\Models\SystemNotification::getUnreadCount($user->id);
         $notifications = \App\Models\SystemNotification::getRecent($user->id, 5); // Latest 5
 
@@ -24,6 +27,9 @@ class SystemNotificationController extends Controller
 
     public function index()
     {
+        // Sync system alerts before loading index
+        \App\Models\SystemNotification::syncSystemAlerts();
+
         $notifications = \App\Models\SystemNotification::where('user_id', auth()->id())
             ->orderBy('created_at', 'desc')
             ->paginate(20);

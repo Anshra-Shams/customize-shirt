@@ -112,10 +112,20 @@
                                             data.notifications.forEach(n => {
                                                 let iconClass = 'bg-info';
                                                 let icon = 'fa-info';
+                                                let titleLower = (n.title || '').toLowerCase();
 
                                                 if (n.type === 'sale_return') {
                                                     iconClass = 'bg-warning';
                                                     icon = 'fa-undo';
+                                                } else if (titleLower.includes('delivery') || n.source_type === 'App\\Models\\CustomerOrder') {
+                                                    iconClass = n.type === 'critical' ? 'bg-danger' : 'bg-success';
+                                                    icon = 'fa-truck';
+                                                } else if (titleLower.includes('raw material')) {
+                                                    iconClass = 'bg-warning';
+                                                    icon = 'fa-boxes';
+                                                } else if (n.type === 'critical' || titleLower.includes('stock alert')) {
+                                                    iconClass = 'bg-danger';
+                                                    icon = 'fa-exclamation-triangle';
                                                 }
 
                                                 html += `

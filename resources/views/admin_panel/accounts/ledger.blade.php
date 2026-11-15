@@ -138,6 +138,58 @@
                                                     $partyType = 'Account';
                                                     $partyBadgeClass = 'bg-info text-dark';
                                                 }
+                                            } elseif ($entry->source instanceof \App\Models\CustomerOrder) {
+                                                $partyType = 'Customer';
+                                                $partyBadgeClass = 'bg-primary';
+                                                $partyName = $entry->source->customer ? ($entry->source->customer->customer_name ?? $entry->source->customer->name) : ($entry->source->walkin_name ?? 'Walk-in');
+                                            }
+
+                                            // Detect Customer Order & Delivery details from description if party or order is present
+                                            $desc = $entry->description ?? '';
+                                            $orderNo = null;
+                                            if (preg_match('/(?:Customer Order|Order)\s*#([A-Za-z0-9\-_]+)/i', $desc, $mOrd)) {
+                                                $orderNo = $mOrd[1];
+                                            }
+
+                                            // If no order found yet, check if description mentions a Delivery invoice (e.g. #DEL-0003)
+                                            if (preg_match('/(?:Invoice|Delivery)\s*#(DEL-[A-Za-z0-9\-_]+)/i', $desc, $mDel)) {
+                                                $delInvoiceNo = $mDel[1];
+                                                $delSale = \App\Models\Sale::with('customer')->where('invoice_no', $delInvoiceNo)->first();
+                                                if ($delSale) {
+                                                    $linkedOrder = \App\Models\CustomerOrder::where('sale_id', $delSale->id)->first();
+                                                    if (!$linkedOrder && !empty($delSale->reference) && preg_match('/ORD-[A-Za-z0-9\-]+/i', $delSale->reference, $mRef)) {
+                                                        $linkedOrder = \App\Models\CustomerOrder::where('order_no', $mRef[0])->first();
+                                                    }
+
+                                                    if ($linkedOrder && !$orderNo) {
+                                                        $orderNo = $linkedOrder->order_no;
+                                                    }
+
+                                                    $detectedCustomer = $delSale->customer ? ($delSale->customer->customer_name ?? $delSale->customer->name) : ($delSale->walkin_name ?? ($linkedOrder ? ($linkedOrder->customer ? ($linkedOrder->customer->customer_name ?? $linkedOrder->customer->name) : $linkedOrder->walkin_name) : null));
+
+                                                    if (empty($partyName) && $detectedCustomer) {
+                                                        $partyName = $detectedCustomer;
+                                                        $partyType = 'Customer';
+                                                        $partyBadgeClass = 'bg-primary';
+                                                    }
+
+                                                    if (!\Illuminate\Support\Str::contains($desc, ['Customer Order', 'ORD-']) && $orderNo) {
+                                                        $desc .= " (Customer Order #{$orderNo}" . ($detectedCustomer ? " - {$detectedCustomer}" : '') . ")";
+                                                     }
+                                                }
+                                            }
+
+                                            // Fallback to extract customer name from description if partyName is still empty
+                                            if (empty($partyName)) {
+                                                if (preg_match('/\((?:Customer Order #[A-Za-z0-9\-_]+\s*-\s*)([^)]+)\)/i', $desc, $mPart)) {
+                                                    $partyName = trim($mPart[1]);
+                                                    $partyType = 'Customer';
+                                                    $partyBadgeClass = 'bg-primary';
+                                                } elseif (preg_match('/(?:Advance received for Customer Order|Delivery payment for Customer Order)\s*#[A-Za-z0-9\-_]+\s*\(([^)]+)\)/i', $desc, $mPart)) {
+                                                    $partyName = trim($mPart[1]);
+                                                    $partyType = 'Customer';
+                                                    $partyBadgeClass = 'bg-primary';
+                                                }
                                             }
                                         @endphp
                                         <tr>
@@ -145,7 +197,7 @@
                                             <td class="text-center">
                                                 <span class="badge bg-light text-dark border">{{ $voucherNo }}</span>
                                             </td>
-                                            <td>{{ $entry->description }}</td>
+                                            <td>{{ $desc }}</td>
                                             <td>
                                                 @if ($partyName)
                                                     <span class="badge {{ $partyBadgeClass }}" style="font-size: 0.7rem;">{{ $partyType }}</span>

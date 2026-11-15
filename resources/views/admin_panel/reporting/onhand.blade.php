@@ -122,7 +122,7 @@
                 {{-- Left Title --}}
                 <div class="d-flex align-items-center me-3">
                     <span class="fw-bold text-dark fs-6 text-nowrap" style="letter-spacing: -0.2px;">
-                        <i class="fas fa-warehouse text-primary me-2"></i>Inventory On-Hand Report
+                        <i class="fas fa-warehouse text-primary me-2"></i>Raw Material On-Hand Report
                     </span>
                 </div>
 
@@ -130,7 +130,7 @@
                 <div class="flex-grow-1" style="min-width: 250px; max-width: 400px; margin-right: 14px;">
                     <div class="position-relative">
                         <i class="fas fa-search position-absolute text-muted" style="left: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; pointer-events: none;"></i>
-                        <input type="text" class="form-control form-control-sm searchOnhandInput" placeholder="Search Code / Name / Brand / UOM…" style="height: 34px; font-size: .80rem; border-radius: 6px; padding-left: 34px; border: 1px solid #cbd5e1;">
+                        <input type="text" class="form-control form-control-sm searchOnhandInput" placeholder="Search Code / Name / Category / UOM…" style="height: 34px; font-size: .80rem; border-radius: 6px; padding-left: 34px; border: 1px solid #cbd5e1;">
                     </div>
                 </div>
 
@@ -145,8 +145,8 @@
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold d-inline-flex align-items-center btnPrintReport" style="height: 34px; border-radius: 6px; font-size: .78rem; margin-right: 8px !important;">
                         <i class="fas fa-print me-1"></i> Print
                     </button>
-                    <a href="{{ route('product') }}" class="btn btn-primary btn-sm px-3 fw-bold d-inline-flex align-items-center" style="height: 34px; border-radius: 6px; font-size: .78rem;">
-                        <i class="fas fa-arrow-left me-1"></i> Back to Products
+                    <a href="{{ route('raw_materials.index') }}" class="btn btn-primary btn-sm px-3 fw-bold d-inline-flex align-items-center" style="height: 34px; border-radius: 6px; font-size: .78rem;">
+                        <i class="fas fa-arrow-left me-1"></i> Back to Raw Materials
                     </a>
                 </div>
             </div>
@@ -256,8 +256,8 @@
                         <tr>
                             <th class="text-center" style="width: 40px;">#</th>
                             <th style="width: 130px;">CODE</th>
-                            <th>ITEM NAME</th>
-                            <th style="width: 150px;">BRAND</th>
+                            <th>RAW MATERIAL</th>
+                            <th style="width: 150px;">CATEGORY</th>
                             <th style="width: 100px;">UOM</th>
                             <th class="text-end" style="width: 130px;">ON-HAND QTY</th>
                             <th class="text-center" style="width: 110px;">STATUS</th>
@@ -269,18 +269,20 @@
                                 $qtyVal = rtrim(rtrim(number_format($r->onhand_qty, 3, '.', ''), '0'), '.');
                                 $qtyNum = (float)$r->onhand_qty;
                             @endphp
-                            <tr data-search="{{ strtolower($r->item_code . ' ' . $r->item_name . ' ' . $r->brand_name . ' ' . $r->unit_name) }}">
+                            <tr data-search="{{ strtolower($r->item_code . ' ' . $r->item_name . ' ' . $r->category_name . ' ' . $r->brand_name . ' ' . $r->unit_name) }}">
                                 <td class="text-center text-muted fw-bold">{{ $i + 1 }}</td>
                                 <td><span class="font-monospace text-primary fw-bold">{{ $r->item_code }}</span></td>
                                 <td class="fw-semibold text-dark">{{ $r->item_name }}</td>
-                                <td class="text-muted">{{ $r->brand_name ?? '-' }}</td>
+                                <td class="text-muted">{{ $r->category_name ?: ($r->brand_name ?: '-') }}</td>
                                 <td><span class="badge bg-light text-dark border">{{ $r->unit_name ?? '-' }}</span></td>
                                 <td class="text-end fw-bold {{ $qtyNum > 0 ? 'text-success' : 'text-danger' }}">
                                     {{ $qtyVal }}
                                 </td>
                                 <td class="text-center">
-                                    @if($r->is_part)
-                                        <span class="badge bg-info text-white">Part</span>
+                                    @if(!$r->is_active)
+                                        <span class="badge bg-secondary text-white">Inactive</span>
+                                    @elseif($r->is_raw_material || $r->is_part)
+                                        <span class="badge bg-info text-white">Raw Material</span>
                                     @elseif($r->is_assembled)
                                         <span class="badge bg-primary text-white">Assembled</span>
                                     @else
@@ -304,15 +306,17 @@
                 $qtyVal = rtrim(rtrim(number_format($r->onhand_qty, 3, '.', ''), '0'), '.');
                 $qtyNum = (float)$r->onhand_qty;
             @endphp
-            <div class="mob-card p-2.5 p-2 mb-2 mob-onhand-card" data-search="{{ strtolower($r->item_code . ' ' . $r->item_name . ' ' . $r->brand_name . ' ' . $r->unit_name) }}">
+            <div class="mob-card p-2.5 p-2 mb-2 mob-onhand-card" data-search="{{ strtolower($r->item_code . ' ' . $r->item_name . ' ' . $r->category_name . ' ' . $r->brand_name . ' ' . $r->unit_name) }}">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <div class="d-flex align-items-center gap-1">
                         <span class="badge bg-light text-muted border" style="font-size: 10px;">#{{ $i + 1 }}</span>
                         <span class="badge bg-light text-primary border font-monospace fw-bold" style="font-size: 11px;">{{ $r->item_code }}</span>
                     </div>
                     <div>
-                        @if($r->is_part)
-                            <span class="badge bg-info text-white" style="font-size: 10px;">Part</span>
+                        @if(!$r->is_active)
+                            <span class="badge bg-secondary text-white" style="font-size: 10px;">Inactive</span>
+                        @elseif($r->is_raw_material || $r->is_part)
+                            <span class="badge bg-info text-white" style="font-size: 10px;">Raw Material</span>
                         @elseif($r->is_assembled)
                             <span class="badge bg-primary text-white" style="font-size: 10px;">Assembled</span>
                         @else
@@ -322,7 +326,7 @@
                 </div>
                 <div class="mb-1">
                     <strong class="text-dark d-block" style="font-size: 12.5px; line-height: 1.2;">{{ $r->item_name }}</strong>
-                    <small class="text-muted" style="font-size: 11px;">Brand: {{ $r->brand_name ?? '-' }} | UOM: {{ $r->unit_name ?? '-' }}</small>
+                    <small class="text-muted" style="font-size: 11px;">Category: {{ $r->category_name ?: ($r->brand_name ?? '-') }} | UOM: {{ $r->unit_name ?? '-' }}</small>
                 </div>
                 <div class="border-top pt-2 mt-1">
                     <div class="d-flex justify-content-between align-items-center" style="font-size: 11px;">
@@ -379,7 +383,7 @@
         // Export Excel CSV Handler
         $('.btnExportExcel').on('click', function() {
             let csv = [];
-            csv.push(['#', 'Code', 'Item Name', 'Brand', 'UOM', 'On-Hand Qty', 'Status'].join(','));
+            csv.push(['#', 'Code', 'Raw Material', 'Category', 'UOM', 'On-Hand Qty', 'Status'].join(','));
             
             $('#onhandTable tbody tr').each(function() {
                 if ($(this).is(':visible')) {
@@ -395,7 +399,7 @@
             let blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
             let link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = 'Inventory_Onhand_Report.csv';
+            link.download = 'Raw_Material_Onhand_Report.csv';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);

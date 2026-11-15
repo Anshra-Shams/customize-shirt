@@ -117,7 +117,7 @@
 
         <div class="kpi-card" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
             <div>
-                <div style="font-size:.7rem; font-weight:700; text-transform:uppercase; opacity:.85;">Total Sold Amount</div>
+                <div style="font-size:.7rem; font-weight:700; text-transform:uppercase; opacity:.85;">Total Sold / Used Amount</div>
                 <div class="fs-4 fw-bold mt-1" id="kpiSoldAmount">Rs 0.00</div>
             </div>
             <div style="font-size:24px; opacity:.8;"><i class="fas fa-shopping-cart"></i></div>
@@ -397,7 +397,7 @@ $(document).ready(function() {
                     <th>Item / Variant Name</th>
                     <th class="text-end">Opening</th>
                     <th class="text-end">Purchased (+)</th>
-                    <th class="text-end">Sold (-)</th>
+                    <th class="text-end">Sold / Used (-)</th>
                     <th class="text-end">Sale Return (+)</th>
                     <th class="text-end">Purch Return (-)</th>
                     <th class="text-center" style="background:#fffbeb !important; color:#b45309 !important;">Adjustments (+/-)</th>
@@ -465,16 +465,21 @@ $(document).ready(function() {
                     adjBadge = `<span class="badge-adj-minus">${adjVal} ${row.unit_name}</span>`;
                 }
 
+                let fmtQty = function (v) {
+                    let num = parseFloat(v) || 0;
+                    return num % 1 !== 0 ? num.toFixed(2) : num.toLocaleString();
+                };
+
                 let rowHtml = `
                 <tr>
                     <td class="text-muted" style="font-size:.72rem;">${i + 1}</td>
                     <td><code style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:1px 5px; font-size:.72rem;">${row.item_code || ''}</code></td>
                     <td class="fw-semibold">${row.item_name}</td>
-                    <td class="text-end text-muted">${parseFloat(row.initial_stock).toLocaleString()}</td>
-                    <td class="text-end text-success">+${parseFloat(row.purchased).toLocaleString()}</td>
-                    <td class="text-end text-danger">-${parseFloat(row.sold).toLocaleString()}</td>
-                    <td class="text-end text-success">+${parseFloat(row.returned_qty).toLocaleString()}</td>
-                    <td class="text-end text-danger">-${parseFloat(row.purch_returned_qty).toLocaleString()}</td>
+                    <td class="text-end text-muted">${fmtQty(row.initial_stock)}</td>
+                    <td class="text-end text-success">+${fmtQty(row.purchased)}</td>
+                    <td class="text-end text-danger">-${fmtQty(row.sold)}</td>
+                    <td class="text-end text-success">+${fmtQty(row.returned_qty)}</td>
+                    <td class="text-end text-danger">-${fmtQty(row.purch_returned_qty)}</td>
                     <td class="text-center" style="background:#fffbeb !important;">${adjBadge}</td>
                     <td class="text-end fw-bold text-primary" style="background:#eef2ff !important;">${row.formatted_stock}</td>
                     <td class="text-end fw-bold">Rs ${parseFloat(row.stock_value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
@@ -554,10 +559,19 @@ $(document).ready(function() {
             return;
         }
 
-        let csv = 'Item Code,Item Name,Category,Unit,Current Stock,Cartons,Avg Price (Rs),Stock Value (Rs)\n';
-        $.each(currentReportData, function (i, r) {
-            csv += `"${r.item_code || ''}","${r.item_name}","${r.category_name}","${r.unit_name}","${r.balance}","${r.cartons}","${r.average_price}","${r.stock_value}"\n`;
-        });
+        let mode = $('#report_mode').val();
+        let csv = '';
+        if (mode === 'summary') {
+            csv = 'Item Code,Item Name,Category,Unit,Current Stock,Cartons,Avg Price (Rs),Stock Value (Rs)\n';
+            $.each(currentReportData, function (i, r) {
+                csv += `"${r.item_code || ''}","${r.item_name}","${r.category_name}","${r.unit_name}","${r.balance}","${r.cartons}","${r.average_price}","${r.stock_value}"\n`;
+            });
+        } else {
+            csv = 'Item Code,Item Name,Category,Unit,Opening,Purchased,Sold / Used,Sale Return,Purch Return,Adjustments,Closing Stock,Stock Value (Rs)\n';
+            $.each(currentReportData, function (i, r) {
+                csv += `"${r.item_code || ''}","${r.item_name}","${r.category_name}","${r.unit_name}","${r.initial_stock}","${r.purchased}","${r.sold}","${r.returned_qty}","${r.purch_returned_qty}","${r.adjustments}","${r.balance}","${r.stock_value}"\n`;
+            });
+        }
 
         let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         let link = document.createElement("a");

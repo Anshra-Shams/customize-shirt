@@ -586,14 +586,14 @@
                     toggleGroup(grpLoose, false);
                     unitLabels.forEach(l => l.innerText = '(pc)');
  
-                    setRequired(['pieces_per_box', 'boxes_quantity', 'sale_price_per_box', 'purchase_price_per_piece'], true);
+                    setRequired(['pieces_per_box', 'boxes_quantity'], true);
                     setRequired(['piece_quantity'], false);
  
                 } else {
                     toggleGroup(grpPieceOnly, false);
                     unitLabels.forEach(l => l.innerText = '(' + (mode === 'by_pieces' ? 'pc' : (mode === 'by_meter' ? 'm' : 'kg')) + ')');
  
-                    setRequired(['piece_quantity', 'sale_price_per_box', 'purchase_price_per_piece'], true);
+                    setRequired(['piece_quantity'], true);
                     setRequired(['pieces_per_box', 'boxes_quantity'], false);
                 }
  
@@ -985,9 +985,9 @@
                             <span style="position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:9px;color:#999;pointer-events:none;font-weight:600;">g</span>
                         </div>
                     </td>
-                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-sale-input" name="variant_sale_price[]" step="any" value="${saleVal}" placeholder="0.00" required></td>
+                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-sale-input" name="variant_sale_price[]" step="any" value="${saleVal}" placeholder="0.00"></td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_wholesale_price[]" step="any" value="${wholesaleVal}" placeholder="0.00"></td>
-                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-purch-input" name="variant_purchase_price[]" step="any" value="${purchVal}" placeholder="0.00" required></td>
+                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm base-purch-input" name="variant_purchase_price[]" step="any" value="${purchVal}" placeholder="0.00"></td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_alert_qty[]" value="${alertVal}" placeholder="0"></td>
                     <td class="p-1"><input type="text" class="form-control-pro form-control-sm" name="variant_barcode[]" value="${barcodeVal}"></td>
                     <td class="p-1 text-center text-nowrap">
@@ -1163,9 +1163,9 @@
                             <span style="position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:9px;color:#198754;pointer-events:none;font-weight:700;">g</span>
                         </div>
                     </td>
-                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm sale-price-input" name="variant_sale_price[]" step="any" value="${suggSale}" placeholder="0.00" required></td>
+                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm sale-price-input" name="variant_sale_price[]" step="any" value="${suggSale}" placeholder="0.00"></td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_wholesale_price[]" step="any" value="${suggWholesale}" placeholder="0.00"></td>
-                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm purch-price-input" name="variant_purchase_price[]" step="any" value="${suggPurch}" placeholder="0.00" required></td>
+                    <td class="p-1"><input type="number" class="form-control-pro form-control-sm purch-price-input" name="variant_purchase_price[]" step="any" value="${suggPurch}" placeholder="0.00"></td>
                     <td class="p-1"><input type="number" class="form-control-pro form-control-sm" name="variant_alert_qty[]" value="${alertVal}" placeholder="0"></td>
                     <td class="p-1"><input type="text" class="form-control-pro form-control-sm" name="variant_barcode[]" value="${barcodeVal}"></td>
                     <td class="p-1 text-center text-nowrap">
@@ -1537,8 +1537,8 @@
 
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                         <div class="mob-field-group">
-                            <div class="mob-label">Sale Price <span class="req">*</span></div>
-                            <input type="number" class="mob-input mob-sync" data-field="variant_sale_price[]" value="${saleVal}" placeholder="0.00" step="any" required>
+                            <div class="mob-label">Sale Price</div>
+                            <input type="number" class="mob-input mob-sync" data-field="variant_sale_price[]" value="${saleVal}" placeholder="0.00" step="any">
                         </div>
                         <div class="mob-field-group">
                             <div class="mob-label">Wholesale Price</div>
@@ -1546,8 +1546,8 @@
                         </div>
                     </div>
                     <div class="mob-field-group">
-                        <div class="mob-label">Purchase Price <span class="req">*</span></div>
-                        <input type="number" class="mob-input mob-sync" data-field="variant_purchase_price[]" value="${purchVal}" placeholder="0.00" step="any" required>
+                        <div class="mob-label">Purchase Price</div>
+                        <input type="number" class="mob-input mob-sync" data-field="variant_purchase_price[]" value="${purchVal}" placeholder="0.00" step="any">
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                         <div class="mob-field-group">
