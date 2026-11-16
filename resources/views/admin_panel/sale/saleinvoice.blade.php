@@ -527,10 +527,6 @@
                         <td class="text-start">
                             <div style="font-weight: bold; font-size: 12px; margin-bottom: 2px;">
                                 {{ $item['item_name'] }}
-                                @if (!empty($item['item_code']))
-                                    <span class="text-muted fw-normal ms-1"
-                                        style="font-size: 11px;">({{ $item['item_code'] }})</span>
-                                @endif
                             </div>
 
                             <div style="font-size: 11px; color: #555; line-height: 1.2;">

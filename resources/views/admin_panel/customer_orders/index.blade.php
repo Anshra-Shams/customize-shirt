@@ -4,11 +4,14 @@
 <style>
     .co-stat-grid {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 1rem;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.85rem;
         margin-bottom: 1.5rem;
     }
-    @media (max-width: 1200px) {
+    @media (max-width: 1400px) {
+        .co-stat-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 992px) {
         .co-stat-grid { grid-template-columns: repeat(3, 1fr); }
     }
     @media (max-width: 768px) {
@@ -72,6 +75,10 @@
         box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
         overflow: hidden;
     }
+    .co-table {
+        border: 1px solid #dee2e6 !important;
+        border-collapse: collapse;
+    }
     .co-table thead th {
         background: #f8fafc;
         color: #475569;
@@ -79,14 +86,14 @@
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        border-bottom: 2px solid #e2e8f0;
-        padding: 0.85rem 0.75rem;
+        border: 1px solid #dee2e6 !important;
+        padding: 0.75rem;
         white-space: nowrap;
     }
     .co-table tbody td {
-        padding: 0.85rem 0.75rem;
+        padding: 0.75rem;
         vertical-align: middle;
-        border-bottom: 1px solid #f1f5f9;
+        border: 1px solid #dee2e6 !important;
         font-size: 0.85rem;
         color: #334155;
     }
@@ -146,6 +153,26 @@
                     </div>
                     <div class="co-stat-icon" style="background: #eef2ff; color: #4f46e5;">
                         <i class="fas fa-shopping-bag"></i>
+                    </div>
+                </div>
+                <div class="co-stat-card">
+                    <div>
+                        <div class="co-stat-label">Total Amount</div>
+                        <div class="co-stat-value text-primary" style="font-size: 1.25rem;">Rs {{ number_format($stats['total_amount'], 2) }}</div>
+                    </div>
+                    <div class="co-stat-icon" style="background: #e0f2fe; color: #0284c7;">
+                        <i class="fas fa-wallet"></i>
+                    </div>
+                </div>
+                <div class="co-stat-card">
+                    <div>
+                        <div class="co-stat-label">Est. Profit</div>
+                        <div class="co-stat-value {{ $stats['total_profit'] >= 0 ? 'text-success' : 'text-danger' }}" style="font-size: 1.25rem;">
+                            Rs {{ number_format($stats['total_profit'], 2) }}
+                        </div>
+                    </div>
+                    <div class="co-stat-icon" style="background: #dcfce7; color: #16a34a;">
+                        <i class="fas fa-chart-line"></i>
                     </div>
                 </div>
                 <div class="co-stat-card">
@@ -237,12 +264,12 @@
             <!-- Orders Table -->
             <div class="co-table-card">
                 <div class="table-responsive">
-                    <table class="table co-table mb-0">
+                    <table class="table table-bordered co-table mb-0">
                         <thead>
                             <tr>
                                 <th>Order #</th>
                                 <th>Customer</th>
-                                <th>Ordered Items &amp; Description</th>
+                                <th>Ordered Items</th>
                                 <th class="text-center">Total Qty</th>
                                 <th>Order Date</th>
                                 <th>Delivery Date</th>
@@ -279,21 +306,19 @@
                                             <div class="small text-muted"><i class="fas fa-phone-alt mr-1"></i>{{ $order->customer_phone }}</div>
                                         @endif
                                     </td>
-                                    <td style="max-width: 300px;">
-                                        @foreach ($order->items->take(3) as $item)
-                                            <div class="mb-1">
-                                                <span class="font-weight-bold text-dark">{{ $item->item_name }}</span>
-                                                <span class="badge badge-light border ml-1">{{ rtrim(rtrim(number_format($item->qty, 2), '0'), '.') }} {{ $item->unit }}</span>
-                                                @if ($item->description)
-                                                    <div class="small text-muted">{{ \Illuminate\Support\Str::limit($item->description, 55) }}</div>
+                                    <td>
+                                        @php
+                                            $itemNamesList = $order->items->pluck('item_name')->filter()->values();
+                                        @endphp
+                                        @if ($itemNamesList->count() > 0)
+                                            <div class="font-weight-bold text-dark">
+                                                {{ $itemNamesList->take(4)->implode(', ') }}
+                                                @if ($itemNamesList->count() > 4)
+                                                    <span class="small text-primary font-weight-bold">+{{ $itemNamesList->count() - 4 }} more</span>
                                                 @endif
                                             </div>
-                                        @endforeach
-                                        @if ($order->items->count() > 3)
-                                            <span class="small text-primary font-weight-bold">+{{ $order->items->count() - 3 }} more item(s)</span>
-                                        @endif
-                                        @if ($order->description)
-                                            <div class="small text-info mt-1"><i class="fas fa-sticky-note mr-1"></i>{{ \Illuminate\Support\Str::limit($order->description, 60) }}</div>
+                                        @else
+                                            <span class="text-muted">-</span>
                                         @endif
                                     </td>
                                     <td class="text-center font-weight-bold">
@@ -386,11 +411,22 @@
                     </table>
                 </div>
 
-                @if ($orders->hasPages())
-                    <div class="p-3 border-top d-flex justify-content-end">
-                        {{ $orders->links() }}
+                <div class="px-4 py-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2 bg-light bg-opacity-25">
+                    <div class="text-muted small">
+                        Showing <strong>{{ $orders->firstItem() ?? 0 }}</strong> to <strong>{{ $orders->lastItem() ?? 0 }}</strong> of <strong>{{ $orders->total() }}</strong> orders (15 per page)
                     </div>
-                @endif
+                    <div>
+                        @if ($orders->hasPages())
+                            {{ $orders->links() }}
+                        @else
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item disabled"><span class="page-link">&laquo; Previous</span></li>
+                                <li class="page-item active"><span class="page-link">1</span></li>
+                                <li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>
+                            </ul>
+                        @endif
+                    </div>
+                </div>
             </div>
 
         </div>

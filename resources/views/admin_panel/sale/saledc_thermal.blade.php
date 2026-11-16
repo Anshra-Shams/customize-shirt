@@ -299,9 +299,6 @@
                         <td class="item-name">
                             {{ \Illuminate\Support\Str::limit($item['item_name'], 30) }}
                             <div class="item-meta mt-1">
-                                @if (!empty($item['item_code']))
-                                    ({{ $item['item_code'] }})
-                                @endif
                                 Total: {{ $totalPieces }} pcs
                             </div>
                         </td>

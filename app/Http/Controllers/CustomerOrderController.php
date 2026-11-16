@@ -72,11 +72,42 @@ class CustomerOrderController extends Controller
             $query->whereDate('delivery_date', $request->delivery_date);
         }
 
-        $orders = $query->orderByDesc('id')->paginate(20)->withQueryString();
+        $perPage = (int) $request->input('per_page', 15);
+        if ($perPage <= 0 || $perPage > 100) {
+            $perPage = 15;
+        }
+
+        $orders = $query->orderByDesc('id')->paginate($perPage)->withQueryString();
+
+        $allActiveOrders = CustomerOrder::with('items.product')
+            ->where('status', '!=', 'cancelled')
+            ->get();
+
+        $totalOrderAmount = 0;
+        $totalOrderProfit = 0;
+
+        foreach ($allActiveOrders as $actOrder) {
+            $totalOrderAmount += (float) $actOrder->total_amount;
+            $orderMatCost = 0;
+            foreach ($actOrder->items as $it) {
+                $mats = is_array($it->materials) ? $it->materials : [];
+                $itemMatCost = collect($mats)->sum(fn($m) => (float)($m['amount'] ?? 0));
+                if ($itemMatCost == 0 && $it->product_id) {
+                    $prod = $it->product;
+                    if ($prod && $prod->purchase_price_per_piece > 0) {
+                        $itemMatCost = (float) $prod->purchase_price_per_piece;
+                    }
+                }
+                $orderMatCost += ($itemMatCost * (float) $it->qty);
+            }
+            $totalOrderProfit += ((float) $actOrder->total_amount - $orderMatCost);
+        }
 
         $today = now()->toDateString();
         $stats = [
             'total' => CustomerOrder::count(),
+            'total_amount' => $totalOrderAmount,
+            'total_profit' => $totalOrderProfit,
             'pending' => CustomerOrder::where('status', 'pending')->count(),
             'in_progress' => CustomerOrder::where('status', 'in_progress')->count(),
             'ready' => CustomerOrder::where('status', 'ready')->count(),
