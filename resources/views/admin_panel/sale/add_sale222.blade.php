@@ -1122,19 +1122,17 @@
                     @endif
                 </div>
 
+                @if (!$isDelivery)
                 {{-- ACTION BUTTONS ROW --}}
                 <div class="d-flex flex-wrap gap-2 justify-content-center py-2 px-3 mt-2 border-top bg-white rounded-3 shadow-sm">
-                    @if (!$isDelivery)
                     <button type="button" class="btn btn-outline-primary btn-sm px-3 fw-bold" id="btnSave"><i class="fas fa-bookmark me-1"></i>Booking</button>
-                    @endif
-                    <button type="button" class="btn {{ $isDelivery ? 'btn-success' : 'btn-primary' }} btn-sm px-4 fw-bold shadow-sm" id="btnPosted"><i class="fas {{ $isDelivery ? 'fa-truck' : 'fa-shopping-cart' }} me-1"></i>{{ $isDelivery ? 'Deliver Order' : 'Sale' }}</button>
+                    <button type="button" class="btn btn-primary btn-sm px-4 fw-bold shadow-sm" id="btnPosted"><i class="fas fa-shopping-cart me-1"></i>Sale</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnPrint"><i class="fas fa-print me-1"></i>A4 Print</button>
-                    @if (!$isDelivery)
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnEstimate"><i class="fas fa-file-invoice me-1"></i>Estimate</button>
-                    @endif
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnPrint2"><i class="fas fa-receipt me-1"></i>Thermal Print</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm px-3 fw-bold" id="btnDcThermal"><i class="fas fa-truck me-1"></i>DC</button>
                 </div>
+                @endif
             </form>
         </div>
     </div>
