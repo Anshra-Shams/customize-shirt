@@ -1019,7 +1019,7 @@
                                                     Purchase Report</a></li>
                                         @endcan
                                         @can('sale.report.view')
-                                            <li><a href="{{ route('report.sale') }}"><i class="fa-solid fa-users"></i> Sale
+                                            <li><a href="{{ route('report.sale') }}"><i class="fa-solid fa-users"></i> Order
                                                     Report</a></li>
                                             <li><a href="{{ route('report.product_sale_customer_wise') }}"><i class="fa-solid fa-users-between-lines"></i> Product Sale (Customer Wise)</a></li>
                                         @endcan

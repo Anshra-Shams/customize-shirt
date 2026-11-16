@@ -141,7 +141,7 @@
                 {{-- Title Badge --}}
                 <div class="sale-filter-group" style="margin-right: 18px;">
                     <span class="fw-bold text-dark fs-6" style="letter-spacing: -0.2px; font-weight:700; white-space:nowrap;">
-                        <i class="fas fa-chart-line text-primary" style="margin-right: 8px;"></i>Sale Report
+                        <i class="fas fa-chart-line text-primary" style="margin-right: 8px;"></i>Order Report
                     </span>
                 </div>
 
@@ -198,7 +198,7 @@
                 <div class="row g-2">
                     <div class="col-12 mb-1">
                         <span class="fw-bold text-dark fs-6">
-                            <i class="fas fa-chart-line text-primary me-2"></i>Sale Report
+                            <i class="fas fa-chart-line text-primary me-2"></i>Order Report
                         </span>
                     </div>
                     <div class="col-6 mb-1">
