@@ -465,8 +465,8 @@
                     <div class="mb-3">
                         <label for="vtype" class="form-label fw-semibold text-dark small">Vendor Type <span class="text-danger">*</span></label>
                         <select class="form-select px-3 py-2" name="type" id="vtype" required style="border-radius: 10px; border: 1.5px solid #cbd5e1; font-weight: 500;">
-                            <option value="normal">Normal Vendor (Supplier / Fabric / Accessories)</option>
-                            <option value="stitching">Stitching Vendor (Tailor / Master / Karigar)</option>
+                            <option value="normal">Normal Vendor</option>
+                            <option value="stitching">Stitching Vendor</option>
                         </select>
                     </div>
 

@@ -581,20 +581,85 @@
         ];
     }
 
-    $preparedProducts = $products->map(function ($prod) {
+    $preparedProducts = collect();
+    foreach ($products as $prod) {
         $defaultPrice = $prod->sale_price_per_piece > 0
-            ? $prod->sale_price_per_piece
+            ? (float) $prod->sale_price_per_piece
             : ((float) ($prod->price ?? 0));
         $unitName = optional($prod->unit)->name ?: 'Pcs';
 
-        return [
-            'id' => $prod->id,
-            'item_name' => $prod->item_name,
-            'item_code' => $prod->item_code,
-            'default_price' => $defaultPrice,
-            'unit_name' => $unitName,
-        ];
-    });
+        $decodedVariants = [];
+        if (!empty($prod->color)) {
+            $vArr = is_string($prod->color) ? json_decode($prod->color, true) : $prod->color;
+            if (is_array($vArr) && count($vArr) > 0) {
+                $decodedVariants = $vArr;
+            }
+        }
+
+        if (!empty($decodedVariants)) {
+            foreach ($decodedVariants as $vIdx => $v) {
+                $vSize = (!empty($v['size']) && trim($v['size']) !== '-') ? trim($v['size']) : '';
+                $vColor = (!empty($v['color']) && trim($v['color']) !== '-') ? trim($v['color']) : '';
+                $vName = !empty($v['name']) ? trim($v['name']) : $prod->item_name;
+
+                $labelParts = [];
+                if ($vColor) $labelParts[] = $vColor;
+                if ($vSize) $labelParts[] = $vSize;
+
+                $variantSuffix = !empty($labelParts)
+                    ? ' - ' . implode(' / ', $labelParts)
+                    : (count($decodedVariants) > 1 ? ' - Variant ' . ($vIdx + 1) : '');
+
+                $vPrice = (isset($v['sale_price']) && (float) $v['sale_price'] > 0)
+                    ? (float) $v['sale_price']
+                    : $defaultPrice;
+
+                $vUnit = (!empty($v['unit']) && trim($v['unit']) !== '-' && trim($v['unit']) !== '')
+                    ? trim($v['unit'])
+                    : $unitName;
+
+                $descParts = [];
+                if ($vColor) $descParts[] = 'Color: ' . $vColor;
+                if ($vSize) $descParts[] = 'Size: ' . $vSize;
+                $variantDesc = implode(', ', $descParts);
+
+                $optKey = $prod->id . '_' . $vIdx;
+
+                $preparedProducts->push([
+                    'key' => $optKey,
+                    'product_id' => $prod->id,
+                    'variant_index' => $vIdx,
+                    'item_name' => $vName . (!empty($labelParts) ? ' - ' . implode(' / ', $labelParts) : ''),
+                    'display_label' => $prod->item_name . $variantSuffix . ($prod->item_code ? " ({$prod->item_code})" : ''),
+                    'item_code' => $prod->item_code,
+                    'default_price' => $vPrice,
+                    'unit_name' => $vUnit,
+                    'desc' => $variantDesc,
+                    'color' => $vColor,
+                    'size' => $vSize,
+                    'is_base' => !empty($v['is_base_variant']) || $vIdx === 0,
+                    'materials' => $v['materials'] ?? [],
+                ]);
+            }
+        } else {
+            $optKey = $prod->id . '_0';
+            $preparedProducts->push([
+                'key' => $optKey,
+                'product_id' => $prod->id,
+                'variant_index' => 0,
+                'item_name' => $prod->item_name,
+                'display_label' => $prod->item_name . ($prod->item_code ? " ({$prod->item_code})" : ''),
+                'item_code' => $prod->item_code,
+                'default_price' => $defaultPrice,
+                'unit_name' => $unitName,
+                'desc' => '',
+                'color' => '',
+                'size' => '',
+                'is_base' => true,
+                'materials' => [],
+            ]);
+        }
+    }
 
     $preparedRawMaterialCategories = collect($rawMaterialCategories ?? [])->map(function ($cat) {
         return [
@@ -818,18 +883,54 @@
             </thead>
             <tbody id="orderItemsBody">
                 @foreach ($rows as $row)
+                    @php
+                        $rowProdId = !empty($row['product_id']) ? (int) $row['product_id'] : null;
+                        $rowItemName = strtolower(trim($row['item_name'] ?? ''));
+                        $rowDesc = strtolower(trim($row['description'] ?? ''));
+                        $matchedKey = null;
+
+                        if ($rowProdId) {
+                            $matchingOptions = $preparedProducts->where('product_id', $rowProdId);
+                            if ($matchingOptions->count() === 1) {
+                                $matchedKey = $matchingOptions->first()['key'];
+                            } elseif ($matchingOptions->count() > 1) {
+                                foreach ($matchingOptions as $opt) {
+                                    if (strtolower(trim($opt['item_name'])) === $rowItemName) {
+                                        $matchedKey = $opt['key'];
+                                        break;
+                                    }
+                                    if (!empty($opt['size']) && (str_contains($rowItemName, strtolower($opt['size'])) || str_contains($rowDesc, strtolower($opt['size'])))) {
+                                        $matchedKey = $opt['key'];
+                                        break;
+                                    }
+                                    if (!empty($opt['color']) && (str_contains($rowItemName, strtolower($opt['color'])) || str_contains($rowDesc, strtolower($opt['color'])))) {
+                                        $matchedKey = $opt['key'];
+                                        break;
+                                    }
+                                }
+                                if (!$matchedKey) {
+                                    $baseOpt = $matchingOptions->firstWhere('is_base', true) ?: $matchingOptions->first();
+                                    $matchedKey = $baseOpt['key'] ?? null;
+                                }
+                            }
+                        }
+                    @endphp
                     <tr class="order-item-row">
                         <td>
                             <input type="hidden" name="item_materials[]" class="item-materials-input" value="{{ htmlspecialchars(json_encode($row['materials'] ?? [])) }}">
-                            <select name="product_id[]" class="form-select product-picker" style="width:100%;">
+                            <input type="hidden" name="product_id[]" class="item-product-id" value="{{ $row['product_id'] ?? '' }}">
+                            <select class="form-select product-picker" style="width:100%;">
                                 <option value="">Search Product (or leave Custom)</option>
                                 @foreach ($preparedProducts as $prod)
-                                    <option value="{{ $prod['id'] }}"
+                                    <option value="{{ $prod['key'] }}"
+                                        data-product-id="{{ $prod['product_id'] }}"
                                         data-name="{{ $prod['item_name'] }}"
                                         data-price="{{ $prod['default_price'] }}"
                                         data-unit="{{ $prod['unit_name'] }}"
-                                        {{ (string) ($row['product_id'] ?? '') === (string) $prod['id'] ? 'selected' : '' }}>
-                                        {{ $prod['item_name'] }}@if ($prod['item_code']) ({{ $prod['item_code'] }})@endif
+                                        data-desc="{{ $prod['desc'] ?? '' }}"
+                                        data-materials="{{ htmlspecialchars(json_encode($prod['materials'] ?? [])) }}"
+                                        {{ $matchedKey === $prod['key'] ? 'selected' : '' }}>
+                                        {{ $prod['display_label'] ?? $prod['item_name'] }}
                                     </option>
                                 @endforeach
                             </select>
@@ -1046,14 +1147,18 @@
     <tr class="order-item-row">
         <td>
             <input type="hidden" name="item_materials[]" class="item-materials-input" value="[]">
-            <select name="product_id[]" class="form-select product-picker" style="width:100%;">
+            <input type="hidden" name="product_id[]" class="item-product-id" value="">
+            <select class="form-select product-picker" style="width:100%;">
                 <option value="">Search Product (or leave Custom)</option>
                 @foreach ($preparedProducts as $prod)
-                    <option value="{{ $prod['id'] }}"
+                    <option value="{{ $prod['key'] }}"
+                        data-product-id="{{ $prod['product_id'] }}"
                         data-name="{{ $prod['item_name'] }}"
                         data-price="{{ $prod['default_price'] }}"
-                        data-unit="{{ $prod['unit_name'] }}">
-                        {{ $prod['item_name'] }}@if ($prod['item_code']) ({{ $prod['item_code'] }})@endif
+                        data-unit="{{ $prod['unit_name'] }}"
+                        data-desc="{{ $prod['desc'] ?? '' }}"
+                        data-materials="{{ htmlspecialchars(json_encode($prod['materials'] ?? [])) }}">
+                        {{ $prod['display_label'] ?? $prod['item_name'] }}
                     </option>
                 @endforeach
             </select>
@@ -1379,19 +1484,37 @@
             }
         }
 
-        // Product selection auto-fills item name, unit, and price
+        // Product selection auto-fills item name, unit, price, and specs/materials
         $(document).on('change', '.product-picker', function() {
             var $row = $(this).closest('.order-item-row');
             var $opt = $(this).find('option:selected');
-            if ($(this).val()) {
+            var val = $(this).val();
+
+            if (val) {
+                var pid = $opt.data('product-id') || '';
                 var name = $opt.data('name') || '';
                 var price = parseFloat($opt.data('price')) || 0;
                 var unit = $opt.data('unit') || 'Pcs';
+                var desc = $opt.data('desc') || '';
+                var mats = $opt.data('materials');
 
+                $row.find('.item-product-id').val(pid);
                 $row.find('.item-name-input').val(name);
                 $row.find('.item-unit').val(unit);
                 $row.find('.item-price').val(price.toFixed(2));
+                if (desc) {
+                    $row.find('input[name="item_description[]"]').val(desc);
+                }
+                if (mats) {
+                    var parsedMats = typeof mats === 'string' ? JSON.parse(mats) : mats;
+                    if (Array.isArray(parsedMats) && parsedMats.length > 0) {
+                        $row.find('.item-materials-input').val(JSON.stringify(parsedMats));
+                        refreshOrderRowMaterialsUI($row);
+                    }
+                }
                 recalculateOrderTotals();
+            } else {
+                $row.find('.item-product-id').val('');
             }
         });
 
@@ -1414,6 +1537,7 @@
             if (rowCount <= 1) {
                 var $row = $(this).closest('.order-item-row');
                 $row.find('.product-picker').val('').trigger('change');
+                $row.find('.item-product-id').val('');
                 $row.find('input[type="text"], input[type="number"]').val('');
                 $row.find('.item-qty').val(1);
                 $row.find('.item-unit').val('Pcs');

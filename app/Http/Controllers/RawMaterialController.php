@@ -52,7 +52,11 @@ class RawMaterialController extends Controller
             }
         }
 
-        $rawMaterials = $query->orderBy('item_name')->paginate(20)->withQueryString();
+        $perPage = (int) $request->input('per_page', 10);
+        if ($perPage <= 0) {
+            $perPage = 10;
+        }
+        $rawMaterials = $query->orderBy('item_name')->paginate($perPage)->withQueryString();
 
         // Summary statistics
         $allRawQuery = Product::where(function ($q) {

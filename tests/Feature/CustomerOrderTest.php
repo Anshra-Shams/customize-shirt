@@ -1158,4 +1158,48 @@ class CustomerOrderTest extends TestCase
         $product->delete();
         $customer->delete();
     }
+
+    public function test_customer_order_form_displays_product_variants(): void
+    {
+        $user = $this->makeAdminUser();
+
+        // 1. Check create view renders unpacked variants
+        $resp = $this->actingAs($user)->get(route('customer_orders.create'));
+        $resp->assertStatus(200);
+        $resp->assertSee('book - lg (ITEM-0003)');
+        $resp->assertSee('book - sm (ITEM-0003)');
+
+        // 2. Create order using a variant
+        $orderNo = 'ORD-VAR-' . uniqid();
+        $postResp = $this->actingAs($user)->post(route('customer_orders.store'), [
+            'order_no' => $orderNo,
+            'customer_mode' => 'walkin',
+            'walkin_name' => 'Variant Walkin Buyer',
+            'order_date' => date('Y-m-d'),
+            'status' => 'pending',
+            'product_id' => [3],
+            'item_name' => ['book - sm'],
+            'item_description' => ['Size: sm'],
+            'qty' => [3],
+            'unit' => ['Pcs'],
+            'price' => [200],
+        ]);
+        $postResp->assertRedirect();
+
+        $order = CustomerOrder::where('order_no', $orderNo)->firstOrFail();
+        $this->assertEquals(1, $order->items->count());
+        $item = $order->items->first();
+        $this->assertEquals(3, $item->product_id);
+        $this->assertEquals('book - sm', $item->item_name);
+        $this->assertEquals('Size: sm', $item->description);
+
+        // 3. Edit view renders with variant option selected
+        $editResp = $this->actingAs($user)->get(route('customer_orders.edit', $order->id));
+        $editResp->assertStatus(200);
+        $editResp->assertSee('book - sm (ITEM-0003)');
+
+        // Clean up
+        $order->items()->delete();
+        $order->delete();
+    }
 }

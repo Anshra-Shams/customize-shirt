@@ -487,11 +487,22 @@
             </table>
         </div>
 
-        @if($rawMaterials->hasPages())
-            <div class="px-4 py-3 border-top">
-                {{ $rawMaterials->links() }}
+        <div class="px-4 py-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2 bg-light bg-opacity-25">
+            <div class="text-muted small">
+                Showing <strong>{{ $rawMaterials->firstItem() ?? 0 }}</strong> to <strong>{{ $rawMaterials->lastItem() ?? 0 }}</strong> of <strong>{{ $rawMaterials->total() }}</strong> entries
             </div>
-        @endif
+            <div>
+                @if($rawMaterials->hasPages())
+                    {{ $rawMaterials->links() }}
+                @else
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item disabled"><span class="page-link">&laquo; Previous</span></li>
+                        <li class="page-item active"><span class="page-link">1</span></li>
+                        <li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>
+                    </ul>
+                @endif
+            </div>
+        </div>
     </div>
 </div>
 

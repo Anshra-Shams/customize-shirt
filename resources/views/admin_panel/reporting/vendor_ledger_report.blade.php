@@ -164,7 +164,7 @@
                         <select name="vendor_type" id="vendor_type_desk" class="form-select form-select-sm vendorTypeSelect" style="height: 34px !important; font-size: .78rem; border-radius: 6px !important; border: 1px solid #cbd5e1 !important; background-color: #ffffff !important;">
                             <option value="all">-- All Types --</option>
                             <option value="normal">Normal Vendor</option>
-                            <option value="stitching">Stitching / Tailor</option>
+                            <option value="stitching">Stitching Vendor</option>
                         </select>
                     </div>
                     <div class="col-md-5">
@@ -209,7 +209,7 @@
                         <select name="vendor_type" class="form-select form-select-sm vendorTypeSelect" style="font-size: 11px; height: 34px !important; border-radius: 6px !important; border: 1px solid #cbd5e1 !important; background-color: #ffffff !important;">
                             <option value="all">-- All Types --</option>
                             <option value="normal">Normal Vendor</option>
-                            <option value="stitching">Stitching / Tailor</option>
+                            <option value="stitching">Stitching Vendor</option>
                         </select>
                     </div>
 
