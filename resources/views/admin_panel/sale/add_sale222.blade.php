@@ -1032,18 +1032,32 @@
                                     <span class="text-muted">Line Discount</span>
                                     <span class="fw-bold text-danger" id="tLineDisc">0.00</span>
                                 </div>
+                                <div class="summary-row" id="rowOrderDiscount" style="{{ (isset($fromOrder) && $fromOrder && $fromOrder->discount > 0) ? '' : 'display:none;' }}">
+                                    <span class="text-muted">Order Discount</span>
+                                    <span class="fw-bold text-danger" id="tOrderDisc">Rs {{ number_format($fromOrder->discount ?? 0, 2) }}</span>
+                                </div>
                                 <div class="summary-row">
                                     <span class="fw-bold text-dark">Net Total</span>
                                     <span class="summary-val-net" id="tSub">0.00</span>
                                 </div>
                                 @if ($isDelivery)
+                                @php
+                                    $orderDiscVal = (float)($fromOrder->discount ?? 0);
+                                    $orderTotVal = (float)($fromOrder->total_amount ?? 0);
+                                    $orderSubVal = (float)($fromOrder->subtotal ?? 0);
+                                    $orderAdvVal = (float)($fromOrder->advance_amount ?? 0);
+                                    $orderNetVal = ($orderSubVal > 0 && abs($orderTotVal - $orderSubVal) < 0.01 && $orderDiscVal > 0)
+                                        ? max(0, $orderSubVal - $orderDiscVal)
+                                        : $orderTotVal;
+                                    $orderBalDueVal = max(0, $orderNetVal - $orderAdvVal);
+                                @endphp
                                 <div class="summary-row" id="rowOrderAdvance">
                                     <span class="text-muted">Order Advance</span>
-                                    <span class="fw-bold text-success" id="summaryOrderAdvance">Rs {{ number_format($fromOrder->advance_amount ?? 0, 2) }}</span>
+                                    <span class="fw-bold text-success" id="summaryOrderAdvance">Rs {{ number_format($orderAdvVal, 2) }}</span>
                                 </div>
                                 <div class="summary-row" id="rowBalanceDue">
                                     <span class="fw-bold text-dark">Balance Due</span>
-                                    <span class="fw-bold text-primary" id="summaryBalanceDue">Rs {{ number_format(max(0, ($fromOrder->total_amount ?? 0) - ($fromOrder->advance_amount ?? 0)), 2) }}</span>
+                                    <span class="fw-bold text-primary" id="summaryBalanceDue">Rs {{ number_format($orderBalDueVal, 2) }}</span>
                                 </div>
                                 @endif
                                 <div class="summary-row">
@@ -1071,7 +1085,7 @@
                                                 <option value="{{ $acc->id }}" {{ str_contains(strtolower($acc->title), 'cash') || str_contains(strtolower($acc->title), 'easypaisa') ? 'selected' : '' }}>{{ $acc->title }}</option>
                                             @endforeach
                                         </select>
-                                        <input type="number" step="0.01" class="form-control form-control-sm text-end rv-amount fw-bold" name="receipt_amount[]" value="{{ isset($fromOrder) && $fromOrder ? max(0, $fromOrder->total_amount - $fromOrder->advance_amount) : '' }}" placeholder="0.00" style="width: 110px; font-size:0.75rem;">
+                                        <input type="number" step="0.01" class="form-control form-control-sm text-end rv-amount fw-bold" name="receipt_amount[]" value="{{ isset($fromOrder) && $fromOrder ? ($orderBalDueVal ?? max(0, $fromOrder->total_amount - $fromOrder->advance_amount)) : '' }}" placeholder="0.00" style="width: 110px; font-size:0.75rem;">
                                     </div>
                                 </div>
 
@@ -1093,7 +1107,7 @@
                     <div class="d-flex align-items-center gap-2">
                         <span class="text-muted fw-semibold" style="font-size:0.8rem;">Discount (Rs.)</span>
                         <div class="input-group input-group-sm" style="width: 130px;">
-                            <input type="number" class="form-control text-end fw-bold text-danger" id="walkinDiscountRs" value="0" placeholder="0">
+                            <input type="number" class="form-control text-end fw-bold text-danger" id="walkinDiscountRs" value="{{ isset($fromOrder) && $fromOrder && $fromOrder->discount > 0 ? (float)$fromOrder->discount : 0 }}" placeholder="0">
                             <span class="input-group-text bg-light text-muted">%</span>
                         </div>
                     </div>
@@ -1778,7 +1792,10 @@
                     $('#customer_order_id').val(order.id);
                     const adv = parseFloat(order.advance_amount) || 0;
                     const tot = parseFloat(order.total_amount) || 0;
-                    const balDue = Math.max(0, tot - adv);
+                    const disc = parseFloat(order.discount) || 0;
+                    const sub = parseFloat(order.subtotal) || 0;
+                    const netTotal = (sub > 0 && Math.abs(tot - sub) < 0.01 && disc > 0) ? Math.max(0, sub - disc) : tot;
+                    const balDue = Math.max(0, netTotal - adv);
                     $('#orderAdvanceAmountHidden').val(adv);
                     $('#remarks').val('Customer Order #' + order.order_no);
 

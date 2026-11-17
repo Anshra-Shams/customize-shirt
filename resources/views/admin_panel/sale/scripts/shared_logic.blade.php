@@ -466,14 +466,13 @@
             tNet += net;
         });
 
-        const isWalkin = $('#walkinToggle').length > 0 && $('#walkinToggle').is(':checked');
-        
         let orderDisc = 0;
-        if (isWalkin) {
-            orderDisc = toNum($('#walkinDiscountRs').val());
-            $('#discountPercent').val(0); // clear percent
-        } else {
-            const orderPct = toNum($('#discountPercent').val());
+        const walkinDiscVal = toNum($('#walkinDiscountRs').val());
+        const orderPct = toNum($('#discountPercent').val());
+
+        if (walkinDiscVal > 0) {
+            orderDisc = walkinDiscVal;
+        } else if (orderPct > 0) {
             orderDisc = (tNet * orderPct) / 100;
         }
 
@@ -492,15 +491,22 @@
             $('#bottomAdvanceVal').text('Rs ' + orderAdvance.toFixed(2));
         }
 
+        if (orderDisc > 0) {
+            $('#rowOrderDiscount').show();
+            $('#tOrderDisc').text('Rs ' + orderDisc.toFixed(2));
+        } else {
+            $('#rowOrderDiscount').hide();
+            $('#tOrderDisc').text('0.00');
+        }
+
         $('#tQty').text(tQty.toFixed(0));
         $('#tGross').text(tGross.toFixed(2));
         $('#tLineDisc').text(tLineDisc.toFixed(2));
-        $('#tSub').text(tNet.toFixed(2));
-        $('#tOrderDisc').text(orderDisc.toFixed(2));
+        $('#tSub').text(currentInvoiceTotal.toFixed(2));
         $('#tPrev').text(prev.toFixed(2));
         $('#tPayable').text(payable.toFixed(2));
         $('#totalAmount').text(tNet.toFixed(2));
-        $('#walkinNetTotal').text(tNet.toFixed(2));
+        $('#walkinNetTotal').text(currentInvoiceTotal.toFixed(2));
         $('#bottomPaymentsTotal').text(receipts.toFixed(2));
         $('#receiptsTotalBadge').text(receipts.toFixed(2));
         $('#itemsRowCount').text($('#salesTableBody tr').length);
